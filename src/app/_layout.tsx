@@ -1,18 +1,64 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
+import '../../global.css';
+import { useEffect } from 'react';
+import { Stack } from 'expo-router';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import {
+  useFonts,
+  Poppins_400Regular,
+  Poppins_600SemiBold,
+  Poppins_700Bold,
+} from '@expo-google-fonts/poppins';
 import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
-
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { StatusBar } from 'expo-status-bar';
+import { useAuthStore } from '../store/auth-store';
+import { ToastBanner } from '../components/shared/ToastBanner';
+import { FloatingAccessibilityButton } from '../components/shared/FloatingAccessibilityButton';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 1000 * 60 * 2,
+      retry: false,
+      refetchOnWindowFocus: false,
+    },
+  },
+});
+
+export default function RootLayout() {
+  const [fontsLoaded] = useFonts({
+    Poppins_400Regular,
+    Poppins_600SemiBold,
+    Poppins_700Bold,
+  });
+
+  const syncAuthFromStorage = useAuthStore((state) => state.syncAuthFromStorage);
+  const isHydrated = useAuthStore((state) => state.isHydrated);
+
+  useEffect(() => {
+    syncAuthFromStorage();
+  }, []);
+
+  useEffect(() => {
+    if (fontsLoaded && isHydrated) {
+      SplashScreen.hideAsync();
+    }
+  }, [fontsLoaded, isHydrated]);
+
+  if (!fontsLoaded || !isHydrated) {
+    return null;
+  }
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <SafeAreaProvider>
+      <QueryClientProvider client={queryClient}>
+        <StatusBar style="light" />
+        <ToastBanner />
+        <Stack screenOptions={{ headerShown: false }} />
+        <FloatingAccessibilityButton />
+      </QueryClientProvider>
+    </SafeAreaProvider>
   );
 }
