@@ -1,25 +1,39 @@
 import axios, { AxiosRequestConfig } from 'axios';
 import * as SecureStore from 'expo-secure-store';
+import { Platform } from 'react-native';
 
 export const AXIOS_INSTANCE = axios.create({
   baseURL: 'https://wnsfinal.onrender.com',
-  withCredentials: true, // Permite receber e enviar o Cookie HttpOnly
+  withCredentials: true,
   headers: {
     'Content-Type': 'application/json',
   },
 });
 
-// Interceptador de Requisição: Injeta o token salvo no celular (Bearer e Cookie)
+// Helper para ler o Token na Web ou no Mobile
+const getToken = async () => {
+  if (Platform.OS === 'web') return localStorage.getItem('wns_access_token');
+  return await SecureStore.getItemAsync('wns_access_token');
+};
+
+const setToken = async (token: string) => {
+  if (Platform.OS === 'web') localStorage.setItem('wns_access_token', token);
+  else await SecureStore.setItemAsync('wns_access_token', token);
+};
+
 AXIOS_INSTANCE.interceptors.request.use(async (config) => {
-  const token = await SecureStore.getItemAsync('wns_access_token');
-  if (token && config.headers) {
-    config.headers.Authorization = `Bearer ${token}`;
-    config.headers.Cookie = `accessToken=${token}`;
+  try {
+    const token = await getToken();
+    if (token && config.headers) {
+      config.headers.Authorization = `Bearer ${token}`;
+      config.headers.Cookie = `accessToken=${token}`;
+    }
+  } catch (error) {
+    // Ignora erro de storage e segue com a requisição
   }
   return config;
 });
 
-// Interceptador de Resposta: Captura o token do Set-Cookie no /auth/login
 AXIOS_INSTANCE.interceptors.response.use(
   async (response) => {
     const setCookie = response.headers['set-cookie'];
@@ -27,21 +41,19 @@ AXIOS_INSTANCE.interceptors.response.use(
       const cookieString = Array.isArray(setCookie) ? setCookie.join('; ') : setCookie;
       const match = cookieString.match(/accessToken=([^;]+)/);
       if (match && match[1]) {
-        await SecureStore.setItemAsync('wns_access_token', match[1]);
+        await setToken(match[1]);
       }
     }
     return response;
   },
   (error) => {
-    // Tratamento amigável para o Rate Limit (429) do RateLimitingService.java
     if (error.response?.status === 429) {
-      return Promise.reject(new Error('Muitas requisições. Aguarde 1 minuto e tente novamente.'));
+      return Promise.reject(new Error('Muitas requisições. Aguarde 1 minuto.'));
     }
     return Promise.reject(error);
   }
 );
 
-// Função exigida pelo Orval para conectar os hooks do React Query ao nosso Axios
 export const customInstance = <T>(
   config: AxiosRequestConfig,
   options?: AxiosRequestConfig,

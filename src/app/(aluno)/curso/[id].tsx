@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Linking,
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
@@ -14,10 +13,12 @@ import { ArrowLeft, Clock, Ticket, CheckCircle2, MessageCircle } from 'lucide-re
 import { useBuscarCursoPorId } from '../../../api/generated/endpoints/curso-controller/curso-controller';
 import { validarCupom } from '../../../api/generated/endpoints/cupom-controller/cupom-controller';
 import { formatCurrency } from '../../../utils/formatters';
+import { useToastStore } from '../../../store/toast-store';
 
 export default function DetalheCursoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
+  const showToast = useToastStore((s) => s.showToast);
 
   const [codigoCupom, setCodigoCupom] = useState('');
   const [validandoCupom, setValidandoCupom] = useState(false);
@@ -32,7 +33,11 @@ export default function DetalheCursoScreen() {
 
   const handleValidarCupom = async () => {
     if (!codigoCupom.trim()) {
-      Alert.alert('Atenção', 'Digite o código do cupom.');
+      showToast({
+        type: 'warning',
+        title: 'Atenção',
+        message: 'Digite o código do cupão antes de aplicar.',
+      });
       return;
     }
 
@@ -45,17 +50,19 @@ export default function DetalheCursoScreen() {
       const valorDesconto = Number(res?.valor || 0);
       setDescontoCupom(valorDesconto);
       setCupomAplicado(codigoCupom.trim().toUpperCase());
-      Alert.alert(
-        'Cupom Aplicado!',
-        `Desconto de ${formatCurrency(valorDesconto)} validado para este curso.`
-      );
-    } catch (err: any) {
+      showToast({
+        type: 'success',
+        title: 'Cupão Aplicado!',
+        message: `Desconto de ${formatCurrency(valorDesconto)} validado para este curso.`,
+      });
+    } catch {
       setDescontoCupom(0);
       setCupomAplicado(null);
-      Alert.alert(
-        'Cupom inválido',
-        'Este cupom não existe, expirou ou não é válido para este curso.'
-      );
+      showToast({
+        type: 'error',
+        title: 'Cupão inválido',
+        message: 'Este cupão não existe, expirou ou não é válido para este curso.',
+      });
     } finally {
       setValidandoCupom(false);
     }
@@ -75,13 +82,17 @@ export default function DetalheCursoScreen() {
   const handleSolicitarMatriculaWhatsApp = () => {
     const msg = `Olá! Gostaria de concluir minha matrícula no curso *${curso.titulo}* (${formatCurrency(
       precoFinal
-    )})${cupomAplicado ? ` utilizando o cupom *${cupomAplicado}*` : ''}.`;
+    )})${cupomAplicado ? ` utilizando o cupão *${cupomAplicado}*` : ''}.`;
     const url = `https://wa.me/5511952400814?text=${encodeURIComponent(msg)}`;
     Linking.openURL(url);
   };
 
   return (
-    <ScrollView className="flex-1 bg-surface" contentContainerStyle={{ padding: 20 }}>
+    <ScrollView
+      className="flex-1 bg-surface"
+      contentContainerStyle={{ padding: 20 }}
+      keyboardShouldPersistTaps="handled"
+    >
       <TouchableOpacity
         onPress={() => router.back()}
         className="flex-row items-center mb-4"
@@ -112,12 +123,12 @@ export default function DetalheCursoScreen() {
           {curso.descricao}
         </Text>
 
-        {/* Simulador de Cupom */}
+        {/* Simulador de Cupão */}
         <View className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6">
           <View className="flex-row items-center mb-2">
             <Ticket size={18} color="#b30016" />
             <Text className="text-xs font-poppins-bold text-gray-800 uppercase ml-2">
-              Possui um cupom de desconto?
+              Possui um cupão de desconto?
             </Text>
           </View>
 
@@ -146,7 +157,7 @@ export default function DetalheCursoScreen() {
             <View className="flex-row items-center mt-2.5">
               <CheckCircle2 size={16} color="#15803d" />
               <Text className="text-green-700 text-xs font-poppins-semibold ml-1.5">
-                Cupom {cupomAplicado} aplicado (-{formatCurrency(descontoCupom)})
+                Cupão {cupomAplicado} aplicado (-{formatCurrency(descontoCupom)})
               </Text>
             </View>
           )}

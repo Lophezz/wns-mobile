@@ -3,10 +3,29 @@ import { View, Text, FlatList, ActivityIndicator, TouchableOpacity } from 'react
 import { Award, CheckCircle, Clock } from 'lucide-react-native';
 import { useListarMinhasMatriculas } from '../../api/generated/endpoints/matricula-controller/matricula-controller';
 import { formatCurrency, formatDate } from '../../utils/formatters';
+import { useToastStore } from '../../store/toast-store';
 
 export default function MinhasMatriculasScreen() {
+  const showToast = useToastStore((s) => s.showToast);
   const { data, isLoading, isError, refetch } = useListarMinhasMatriculas();
   const matriculas = Array.isArray(data) ? data : [];
+
+  const handleRecarregar = async () => {
+    try {
+      await refetch();
+      showToast({
+        type: 'success',
+        title: 'Atualizado',
+        message: 'Lista de matrículas sincronizada.',
+      });
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'Erro ao atualizar',
+        message: 'Verifique sua conexão e tente novamente.',
+      });
+    }
+  };
 
   if (isLoading) {
     return (
@@ -22,7 +41,7 @@ export default function MinhasMatriculasScreen() {
         <Text className="text-gray-700 font-poppins-semibold mb-4 text-center">
           Não foi possível carregar suas matrículas no momento.
         </Text>
-        <TouchableOpacity onPress={() => refetch()} className="bg-brand px-5 py-3 rounded-xl">
+        <TouchableOpacity onPress={handleRecarregar} className="bg-brand px-5 py-3 rounded-xl">
           <Text className="text-white font-poppins-bold">Atualizar</Text>
         </TouchableOpacity>
       </View>
@@ -33,7 +52,7 @@ export default function MinhasMatriculasScreen() {
     <View className="flex-1 bg-surface">
       <FlatList
         data={matriculas}
-        keyExtractor={(item: any) => String(item.id)}
+        keyExtractor={(item: any) => String(item.id || item.matriculaId)}
         contentContainerStyle={{ padding: 16 }}
         ListEmptyComponent={
           <View className="bg-white rounded-2xl p-8 items-center border border-gray-100 mt-4">
@@ -49,6 +68,13 @@ export default function MinhasMatriculasScreen() {
         renderItem={({ item }: { item: any }) => {
           const progresso = Number(item.progresso || 0);
           const concluida = item.status === 'CONCLUIDA' || progresso >= 100;
+          const nomeDoCurso =
+            item.nomeCurso ||
+            item.tituloCurso ||
+            item.cursoTitulo ||
+            item.titulo ||
+            item.curso?.titulo ||
+            'Curso WNS';
 
           return (
             <View className="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-gray-100">
@@ -72,15 +98,15 @@ export default function MinhasMatriculasScreen() {
                   </Text>
                 </View>
 
-                {item.createdAt && (
+                {(item.createdAt || item.dataMatricula) && (
                   <Text className="text-xs font-poppins text-gray-400">
-                    Início: {formatDate(item.createdAt)}
+                    Início: {formatDate(item.createdAt || item.dataMatricula)}
                   </Text>
                 )}
               </View>
 
               <Text className="text-lg font-poppins-bold text-gray-900 mb-3">
-                {item.tituloCurso || item.curso?.titulo || 'Curso WNS'}
+                {nomeDoCurso}
               </Text>
 
               {/* Barra de Progresso */}
@@ -103,7 +129,7 @@ export default function MinhasMatriculasScreen() {
 
               {item.valorPago !== undefined && (
                 <Text className="text-xs font-poppins text-gray-500 pt-2 border-t border-gray-100">
-                  Valor registrado na matrícula: {formatCurrency(item.valorPago)}
+                  Valor registado na matrícula: {formatCurrency(item.valorPago)}
                 </Text>
               )}
             </View>

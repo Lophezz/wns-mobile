@@ -7,7 +7,6 @@ import {
   TouchableOpacity,
   Switch,
   ActivityIndicator,
-  Alert,
   Modal,
   ScrollView,
 } from 'react-native';
@@ -24,22 +23,25 @@ import {
   getListarCursosQueryKey,
 } from '../../api/generated/endpoints/curso-controller/curso-controller';
 import { formatCurrency } from '../../utils/formatters';
+import { useToastStore } from '../../store/toast-store';
 
+// 1. Esquema com o campo 'ativo' obrigatório exigido pelo CursoRequestDTO
 const cursoSchema = z.object({
   titulo: z.string().min(3, 'Informe o título do curso'),
   descricao: z.string().min(10, 'Informe uma descrição detalhada'),
   preco: z.string().min(1, 'Informe o preço (ex: 150.00)'),
   cargaHoraria: z.string().min(1, 'Informe a carga horária em horas'),
-  tipoCurso: z.string().min(2, 'Ex: INGLES, INFORMATICA, EXCEL'),
+  tipoCurso: z.enum(['PRESENCIAL', 'EAD']),
+  ativo: z.boolean(),
 });
 
 type CursoFormData = z.infer<typeof cursoSchema>;
 
 export default function AdminCursosScreen() {
   const queryClient = useQueryClient();
+  const showToast = useToastStore((s) => s.showToast);
   const [modalVisivel, setModalVisivel] = useState(false);
 
-  // GET /cursos/all -> Mostra ativos e inativos para o ADMIN
   const { data: cursosData, isLoading } = useListarTodosOsCursos();
   const criarCursoMutation = useCriarCurso();
   const atualizarCursoMutation = useAtualizarCurso();
@@ -58,7 +60,8 @@ export default function AdminCursosScreen() {
       descricao: '',
       preco: '',
       cargaHoraria: '',
-      tipoCurso: 'INGLES',
+      tipoCurso: 'PRESENCIAL',
+      ativo: true, // Inicia marcado como visível por padrão
     },
   });
 
@@ -66,35 +69,48 @@ export default function AdminCursosScreen() {
     const precoNumerico = parseFloat(data.preco.replace(',', '.'));
     const cargaNumerica = parseInt(data.cargaHoraria, 10);
 
-    if (isNaN(precoNumerico) || precoNumerico <= 0 || isNaN(cargaNumerica)) {
-      Alert.alert('Atenção', 'Verifique se o preço e a carga horária são números válidos.');
+    if (isNaN(precoNumerico) || precoNumerico <= 0 || isNaN(cargaNumerica) || cargaNumerica <= 0) {
+      showToast({
+        type: 'warning',
+        title: 'Dados inválidos',
+        message: 'Verifique se o preço e a carga horária são números maiores que zero.',
+      });
       return;
     }
 
     try {
+      // 2. Envia o 'ativo: data.ativo' para o back-end
       await criarCursoMutation.mutateAsync({
         data: {
-          titulo: data.titulo,
-          descricao: data.descricao,
+          titulo: data.titulo.trim(),
+          descricao: data.descricao.trim(),
           preco: precoNumerico,
           cargaHoraria: cargaNumerica,
-          tipoCurso: data.tipoCurso.toUpperCase() as any,
+          tipoCurso: data.tipoCurso as any,
+          ativo: data.ativo,
         },
       });
 
       await queryClient.invalidateQueries({ queryKey: getListarTodosOsCursosQueryKey() });
+      await queryClient.invalidateQueries({ queryKey: getListarCursosQueryKey() });
       reset();
       setModalVisivel(false);
-      Alert.alert(
-        'Curso Criado!',
-        'Por segurança, o curso foi criado como INATIVO (isActive = false). Ative-o na lista abaixo para exibi-lo aos alunos.'
-      );
+      showToast({
+        type: 'success',
+        title: 'Curso criado com sucesso!',
+        message: data.ativo
+          ? 'O curso já está publicado no catálogo dos alunos.'
+          : 'O curso foi salvo como oculto. Ative-o na lista quando desejar.',
+      });
     } catch {
-      Alert.alert('Erro', 'Não foi possível criar o curso.');
+      showToast({
+        type: 'error',
+        title: 'Erro ao criar curso',
+        message: 'Verifique os campos preenchidos e tente novamente.',
+      });
     }
   };
 
-  // PATCH /cursos/{id} -> Alterna a coluna isActive para true/false
   const handleToggleAtivo = async (curso: any, novoStatus: boolean) => {
     try {
       await atualizarCursoMutation.mutateAsync({
@@ -105,8 +121,17 @@ export default function AdminCursosScreen() {
       });
       await queryClient.invalidateQueries({ queryKey: getListarTodosOsCursosQueryKey() });
       await queryClient.invalidateQueries({ queryKey: getListarCursosQueryKey() });
+      showToast({
+        type: 'success',
+        title: novoStatus ? 'Curso Ativado!' : 'Curso Ocultado',
+        message: `O curso "${curso.titulo}" agora está ${novoStatus ? 'visível' : 'inativo'}.`,
+      });
     } catch {
-      Alert.alert('Erro', 'Não foi possível alterar a visibilidade do curso.');
+      showToast({
+        type: 'error',
+        title: 'Erro',
+        message: 'Não foi possível alterar a visibilidade do curso.',
+      });
     }
   };
 
@@ -176,7 +201,7 @@ export default function AdminCursosScreen() {
                   {item.titulo}
                 </Text>
                 <Text className="text-xs font-poppins text-gray-500 mb-2">
-                  {item.tipoCurso || 'GERAL'} • {item.cargaHoraria}h
+                  Modalidade: {item.tipoCurso || 'PRESENCIAL'} • {item.cargaHoraria}h
                 </Text>
                 <Text className="text-sm font-poppins-bold text-brand">
                   {formatCurrency(item.preco)}
@@ -200,7 +225,7 @@ export default function AdminCursosScreen() {
               </TouchableOpacity>
             </View>
 
-            <ScrollView showsVerticalScrollIndicator={false}>
+            <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
               <Text className="text-xs font-poppins-semibold text-gray-700 mb-1">
                 Título do Curso
               </Text>
@@ -209,10 +234,10 @@ export default function AdminCursosScreen() {
                 name="titulo"
                 render={({ field: { onChange, value } }) => (
                   <TextInput
-                    placeholder="Ex: Inglês Intensivo EAD - Intermediário"
+                    placeholder="Ex: Inglês Intensivo - Intermediário"
                     value={value}
                     onChangeText={onChange}
-                    className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins mb-1"
+                    className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins text-gray-900 mb-1"
                   />
                 )}
               />
@@ -220,27 +245,44 @@ export default function AdminCursosScreen() {
                 <Text className="text-red-600 text-xs mb-2">{errors.titulo.message}</Text>
               )}
 
-              <Text className="text-xs font-poppins-semibold text-gray-700 mb-1 mt-2">
-                Categoria (tipoCurso)
+              <Text className="text-xs font-poppins-semibold text-gray-700 mb-1.5 mt-2">
+                Modalidade (tipoCurso)
               </Text>
               <Controller
                 control={control}
                 name="tipoCurso"
                 render={({ field: { onChange, value } }) => (
-                  <TextInput
-                    placeholder="INGLES, INFORMATICA ou EXCEL"
-                    value={value}
-                    autoCapitalize="characters"
-                    onChangeText={onChange}
-                    className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins mb-1"
-                  />
+                  <View className="flex-row gap-3 mb-2">
+                    {(['PRESENCIAL', 'EAD'] as const).map((mod) => {
+                      const selecionado = value === mod;
+                      return (
+                        <TouchableOpacity
+                          key={mod}
+                          onPress={() => onChange(mod)}
+                          className={`flex-1 py-3 rounded-xl items-center border ${
+                            selecionado
+                              ? 'bg-brand border-brand'
+                              : 'bg-gray-50 border-gray-200'
+                          }`}
+                        >
+                          <Text
+                            className={`font-poppins-bold text-xs ${
+                              selecionado ? 'text-white' : 'text-gray-700'
+                            }`}
+                          >
+                            {mod}
+                          </Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </View>
                 )}
               />
 
               <View className="flex-row gap-3 mt-2">
                 <View className="flex-1">
                   <Text className="text-xs font-poppins-semibold text-gray-700 mb-1">
-                    Preço (BigDecimal)
+                    Preço (R$)
                   </Text>
                   <Controller
                     control={control}
@@ -251,10 +293,13 @@ export default function AdminCursosScreen() {
                         keyboardType="decimal-pad"
                         value={value}
                         onChangeText={onChange}
-                        className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins"
+                        className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins text-gray-900"
                       />
                     )}
                   />
+                  {errors.preco && (
+                    <Text className="text-red-600 text-xs mt-1">{errors.preco.message}</Text>
+                  )}
                 </View>
 
                 <View className="flex-1">
@@ -270,10 +315,13 @@ export default function AdminCursosScreen() {
                         keyboardType="number-pad"
                         value={value}
                         onChangeText={onChange}
-                        className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins"
+                        className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins text-gray-900"
                       />
                     )}
                   />
+                  {errors.cargaHoraria && (
+                    <Text className="text-red-600 text-xs mt-1">{errors.cargaHoraria.message}</Text>
+                  )}
                 </View>
               </View>
 
@@ -285,20 +333,47 @@ export default function AdminCursosScreen() {
                 name="descricao"
                 render={({ field: { onChange, value } }) => (
                   <TextInput
-                    placeholder="Detalhes do conteúdo programático..."
+                    placeholder="Detalhes do conteúdo programático, faixa etária e material..."
                     multiline
                     numberOfLines={3}
                     value={value}
                     onChangeText={onChange}
-                    className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins mb-4"
+                    className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins text-gray-900 mb-1"
                   />
+                )}
+              />
+              {errors.descricao && (
+                <Text className="text-red-600 text-xs mb-2">{errors.descricao.message}</Text>
+              )}
+
+              {/* 3. AQUI ESTÁ O SWITCH DENTRO DO MODAL DO FRONT-END */}
+              <Controller
+                control={control}
+                name="ativo"
+                render={({ field: { onChange, value } }) => (
+                  <View className="flex-row items-center justify-between bg-gray-50 p-3.5 rounded-xl border border-gray-200 mt-3 mb-2">
+                    <View className="flex-1 mr-3">
+                      <Text className="font-poppins-bold text-xs text-gray-900">
+                        Publicar curso imediatamente?
+                      </Text>
+                      <Text className="font-poppins text-[11px] text-gray-500">
+                        Se ativado, o curso já ficará visível no catálogo dos alunos.
+                      </Text>
+                    </View>
+                    <Switch
+                      value={value}
+                      onValueChange={onChange}
+                      trackColor={{ false: '#d1d5db', true: '#b30016' }}
+                      thumbColor="#ffffff"
+                    />
+                  </View>
                 )}
               />
 
               <TouchableOpacity
                 onPress={() => handleSubmit(onSubmitNovoCurso)()}
                 disabled={criarCursoMutation.isPending}
-                className="bg-brand py-4 rounded-xl items-center mb-4"
+                className="bg-brand py-4 rounded-xl items-center mt-3 mb-4"
               >
                 {criarCursoMutation.isPending ? (
                   <ActivityIndicator color="#ffffff" />

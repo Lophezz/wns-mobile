@@ -6,7 +6,6 @@ import {
   TextInput,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
   Modal,
 } from 'react-native';
 import { Search, UserPlus, CheckCircle, XCircle, X } from 'lucide-react-native';
@@ -14,17 +13,19 @@ import { usePesquisarUsuarios } from '../../api/generated/endpoints/auth-control
 import { useListarCursos } from '../../api/generated/endpoints/curso-controller/curso-controller';
 import { useMatricularAluno } from '../../api/generated/endpoints/matricula-controller/matricula-controller';
 import { formatCurrency } from '../../utils/formatters';
+import { useToastStore } from '../../store/toast-store';
 
 export default function AdminUsuariosScreen() {
+  const showToast = useToastStore((s) => s.showToast);
   const [emailBusca, setEmailBusca] = useState('');
   const [alunoSelecionado, setAlunoSelecionado] = useState<any | null>(null);
   const [cursoSelecionadoId, setCursoSelecionadoId] = useState<string>('');
   const [codigoCupom, setCodigoCupom] = useState('');
 
-  // GET /auth/pesquisar?email=...
   const { data: pesquisaData, isLoading } = usePesquisarUsuarios({
     email: emailBusca.trim() || undefined,
-    pageable: { page: 0, size: 20 },
+    page: 0,
+    size: 20,
   } as any);
 
   const { data: cursosAtivosData } = useListarCursos();
@@ -37,7 +38,11 @@ export default function AdminUsuariosScreen() {
 
   const handleConfirmarMatricula = async () => {
     if (!alunoSelecionado?.id || !cursoSelecionadoId) {
-      Alert.alert('Atenção', 'Selecione um curso ativo para matricular o aluno.');
+      showToast({
+        type: 'warning',
+        title: 'Selecione um curso',
+        message: 'Escolha um curso ativo na lista para matricular o aluno.',
+      });
       return;
     }
 
@@ -50,24 +55,25 @@ export default function AdminUsuariosScreen() {
         },
       });
 
-      Alert.alert(
-        'Matrícula Confirmada!',
-        `O aluno ${alunoSelecionado.email} foi matriculado e recebeu o e-mail de confirmação.`
-      );
+      showToast({
+        type: 'success',
+        title: 'Matrícula Confirmada!',
+        message: `Aluno ${alunoSelecionado.email} matriculado com sucesso.`,
+      });
       setAlunoSelecionado(null);
       setCursoSelecionadoId('');
       setCodigoCupom('');
-    } catch (err: any) {
-      Alert.alert(
-        'Não foi possível matricular',
-        'Verifique se o aluno já está matriculado neste curso ou se o cupão é válido.'
-      );
+    } catch {
+      showToast({
+        type: 'error',
+        title: 'Não foi possível matricular',
+        message: 'Verifique se o aluno já possui matrícula neste curso ou se o cupão é válido.',
+      });
     }
   };
 
   return (
     <View className="flex-1 bg-surface">
-      {/* Barra de Pesquisa por E-mail (/auth/pesquisar) */}
       <View className="bg-white p-4 border-b border-gray-100">
         <Text className="text-xs font-poppins-bold text-gray-700 uppercase mb-1.5">
           Pesquisar Utilizador por E-mail
@@ -133,7 +139,6 @@ export default function AdminUsuariosScreen() {
         />
       )}
 
-      {/* Modal para Efetuar Matrícula */}
       <Modal visible={!!alunoSelecionado} animationType="slide" transparent>
         <View className="flex-1 bg-black/50 justify-end">
           <View className="bg-white rounded-t-3xl p-6 max-h-[85%]">
@@ -147,7 +152,10 @@ export default function AdminUsuariosScreen() {
             </View>
 
             <Text className="text-xs font-poppins text-gray-500 mb-4">
-              Aluno: <Text className="font-poppins-bold text-gray-800">{alunoSelecionado?.email}</Text>
+              Aluno:{' '}
+              <Text className="font-poppins-bold text-gray-800">
+                {alunoSelecionado?.email}
+              </Text>
             </Text>
 
             <Text className="text-xs font-poppins-semibold text-gray-700 uppercase mb-2">
@@ -187,7 +195,7 @@ export default function AdminUsuariosScreen() {
               value={codigoCupom}
               onChangeText={setCodigoCupom}
               autoCapitalize="characters"
-              className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins mb-5"
+              className="border border-gray-200 rounded-xl px-3.5 py-2.5 font-poppins text-gray-900 mb-5"
             />
 
             <TouchableOpacity

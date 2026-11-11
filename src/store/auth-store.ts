@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import * as SecureStore from 'expo-secure-store';
 import { jwtDecode } from 'jwt-decode';
+import { Platform } from 'react-native';
 import { AXIOS_INSTANCE } from '../api/axios-instance';
 
 interface JwtPayload {
@@ -22,6 +23,22 @@ interface AuthState {
   syncAuthFromStorage: (fallbackEmail?: string) => Promise<UserRole | null>;
   logout: () => Promise<void>;
 }
+
+// Storage Universal (Web + Mobile)
+const Storage = {
+  getItem: async (key: string) => {
+    if (Platform.OS === 'web') return localStorage.getItem(key);
+    return await SecureStore.getItemAsync(key);
+  },
+  setItem: async (key: string, value: string) => {
+    if (Platform.OS === 'web') localStorage.setItem(key, value);
+    else await SecureStore.setItemAsync(key, value);
+  },
+  removeItem: async (key: string) => {
+    if (Platform.OS === 'web') localStorage.removeItem(key);
+    else await SecureStore.deleteItemAsync(key);
+  },
+};
 
 const checkRoleInPayload = (decoded: JwtPayload): UserRole | null => {
   const candidates = [
@@ -47,36 +64,33 @@ export const useAuthStore = create<AuthState>((set) => ({
 
   syncAuthFromStorage: async (fallbackEmail?: string) => {
     try {
-      let token = await SecureStore.getItemAsync('wns_access_token');
-      const savedEmail = fallbackEmail || (await SecureStore.getItemAsync('wns_user_email'));
-      const savedRole = (await SecureStore.getItemAsync('wns_user_role')) as UserRole | null;
+      let token = await Storage.getItem('wns_access_token');
+      const savedEmail = fallbackEmail || (await Storage.getItem('wns_user_email'));
+      const savedRole = (await Storage.getItem('wns_user_role')) as UserRole | null;
 
       if (fallbackEmail) {
-        await SecureStore.setItemAsync('wns_user_email', fallbackEmail);
+        await Storage.setItem('wns_user_email', fallbackEmail);
       }
 
       let detectedRole: UserRole | null = null;
       let detectedEmail: string | null = savedEmail;
 
-      // 1. Tenta ler a role de dentro do JWT caso o Axios tenha capturado o token
       if (token && token !== 'cookie-session') {
         try {
           const decoded = jwtDecode<JwtPayload>(token);
           if (decoded.exp && decoded.exp * 1000 < Date.now()) {
-            await SecureStore.deleteItemAsync('wns_access_token');
-            await SecureStore.deleteItemAsync('wns_user_role');
+            await Storage.removeItem('wns_access_token');
+            await Storage.removeItem('wns_user_role');
             set({ token: null, email: null, role: null, isHydrated: true });
             return null;
           }
           detectedRole = checkRoleInPayload(decoded);
           detectedEmail = decoded.sub || savedEmail;
         } catch {
-          // Segue para verificação via API
+          // Segue para API
         }
       }
 
-      // 2. Se estamos no momento do login (fallbackEmail presente) ou sem role definida,
-      // testamos a rota exclusiva de ADMIN (/auth/pesquisar) que usa o Cookie HttpOnly nativo!
       if (fallbackEmail || (!detectedRole && savedRole)) {
         if (!fallbackEmail && savedRole) {
           detectedRole = savedRole;
@@ -85,20 +99,12 @@ export const useAuthStore = create<AuthState>((set) => ({
             await AXIOS_INSTANCE.get('/auth/pesquisar', {
               params: { page: 0, size: 1 },
             });
-            // Se retornou 200 OK, o Spring Security confirmou que tem ROLE_ADMIN!
             detectedRole = 'ADMIN';
           } catch (err: any) {
             const status = err?.response?.status;
-            if (status === 403) {
-              // 403 Forbidden significa que está logado, mas é ALUNO!
-              detectedRole = 'ALUNO';
-            } else if (
-              fallbackEmail?.toLowerCase().trim() === 'contato@escolawns.com.br'
-            ) {
-              detectedRole = 'ADMIN';
-            } else {
-              detectedRole = 'ALUNO';
-            }
+            if (status === 403) detectedRole = 'ALUNO';
+            else if (fallbackEmail?.toLowerCase().trim() === 'contato@escolawns.com.br') detectedRole = 'ADMIN';
+            else detectedRole = 'ALUNO';
           }
         }
       }
@@ -109,16 +115,10 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
 
       const finalToken = token || 'cookie-session';
-      await SecureStore.setItemAsync('wns_access_token', finalToken);
-      await SecureStore.setItemAsync('wns_user_role', detectedRole);
+      await Storage.setItem('wns_access_token', finalToken);
+      await Storage.setItem('wns_user_role', detectedRole);
 
-      set({
-        token: finalToken,
-        email: detectedEmail,
-        role: detectedRole,
-        isHydrated: true,
-      });
-
+      set({ token: finalToken, email: detectedEmail, role: detectedRole, isHydrated: true });
       return detectedRole;
     } catch {
       set({ token: null, email: null, role: null, isHydrated: true });
@@ -127,9 +127,9 @@ export const useAuthStore = create<AuthState>((set) => ({
   },
 
   logout: async () => {
-    await SecureStore.deleteItemAsync('wns_access_token');
-    await SecureStore.deleteItemAsync('wns_user_email');
-    await SecureStore.deleteItemAsync('wns_user_role');
+    await Storage.removeItem('wns_access_token');
+    await Storage.removeItem('wns_user_email');
+    await Storage.removeItem('wns_user_role');
     set({ token: null, email: null, role: null, isHydrated: true });
   },
 }));

@@ -5,22 +5,24 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  Alert,
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
-import { UserCheck, ChevronLeft, ChevronRight, CheckCircle2 } from 'lucide-react-native';
+import { UserCheck, ChevronLeft, ChevronRight } from 'lucide-react-native';
 import {
   usePainelAdministrativo,
   useAtualizarMatriculaAdmin,
   getPainelAdministrativoQueryKey,
 } from '../../api/generated/endpoints/matricula-controller/matricula-controller';
+import { useToastStore } from '../../store/toast-store';
 
 export default function AdminDashboardScreen() {
   const queryClient = useQueryClient();
+  const showToast = useToastStore((s) => s.showToast);
   const [page, setPage] = useState(0);
 
   const { data, isLoading, isError, refetch } = usePainelAdministrativo({
-    pageable: { page, size: 10 },
+    page,
+    size: 10,
   } as any);
 
   const atualizarMatriculaMutation = useAtualizarMatriculaAdmin();
@@ -39,9 +41,17 @@ export default function AdminDashboardScreen() {
         },
       });
       await queryClient.invalidateQueries({ queryKey: getPainelAdministrativoQueryKey() });
-      Alert.alert('Sucesso', `Progresso atualizado para ${novoProgresso}%!`);
+      showToast({
+        type: 'success',
+        title: 'Progresso atualizado!',
+        message: `O progresso do aluno foi definido para ${novoProgresso}%.`,
+      });
     } catch {
-      Alert.alert('Erro', 'Não foi possível atualizar o progresso da matrícula.');
+      showToast({
+        type: 'error',
+        title: 'Erro ao atualizar',
+        message: 'Não foi possível alterar o progresso desta matrícula.',
+      });
     }
   };
 
@@ -70,7 +80,7 @@ export default function AdminDashboardScreen() {
     <View className="flex-1 bg-surface">
       <FlatList
         data={alunos}
-        keyExtractor={(item: any) => String(item.alunoId || item.id || item.email)}
+        keyExtractor={(item: any) => String(item.id || item.alunoId || item.email)}
         contentContainerStyle={{ padding: 16 }}
         ListHeaderComponent={
           <View className="bg-gray-900 rounded-2xl p-4 mb-4 flex-row items-center justify-between">
@@ -104,47 +114,52 @@ export default function AdminDashboardScreen() {
                   </Text>
                 </View>
               ) : (
-                cursosDoAluno.map((mat: any) => (
-                  <View
-                    key={String(mat.matriculaId)}
-                    className="bg-gray-50 p-3 rounded-xl mb-2 border border-gray-200"
-                  >
-                    <View className="flex-row justify-between items-center mb-1">
-                      <Text className="font-poppins-bold text-xs text-gray-800 flex-1 mr-2">
-                        {mat.tituloCurso}
-                      </Text>
-                      <Text className="text-xs font-poppins-bold text-brand">
-                        {Number(mat.progresso || 0).toFixed(0)}% • {mat.status}
-                      </Text>
-                    </View>
+                cursosDoAluno.map((mat: any) => {
+                  const matId = String(mat.id ?? mat.matriculaId);
+                  const nomeCurso = mat.titulo ?? mat.tituloCurso ?? 'Curso WNS';
+                  const progressoAtual = Number(mat.progresso || 0);
 
-                    {/* Botões rápidos para atualizar progresso via PATCH */}
-                    <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-gray-200">
-                      <Text className="text-[11px] font-poppins text-gray-500">
-                        Definir progresso:
-                      </Text>
-                      <View className="flex-row gap-1.5">
-                        {[25, 50, 75, 100].map((pct) => (
-                          <TouchableOpacity
-                            key={pct}
-                            onPress={() => handleAlterarProgresso(String(mat.matriculaId), pct)}
-                            className={`px-2.5 py-1 rounded-lg ${
-                              Number(mat.progresso) === pct ? 'bg-brand' : 'bg-gray-200'
-                            }`}
-                          >
-                            <Text
-                              className={`text-[10px] font-poppins-bold ${
-                                Number(mat.progresso) === pct ? 'text-white' : 'text-gray-800'
+                  return (
+                    <View
+                      key={matId}
+                      className="bg-gray-50 p-3 rounded-xl mb-2 border border-gray-200"
+                    >
+                      <View className="flex-row justify-between items-center mb-1">
+                        <Text className="font-poppins-bold text-xs text-gray-800 flex-1 mr-2">
+                          {nomeCurso}
+                        </Text>
+                        <Text className="text-xs font-poppins-bold text-brand">
+                          {progressoAtual.toFixed(0)}% • {mat.status}
+                        </Text>
+                      </View>
+
+                      <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-gray-200">
+                        <Text className="text-[11px] font-poppins text-gray-500">
+                          Definir progresso:
+                        </Text>
+                        <View className="flex-row gap-1.5">
+                          {[0, 25, 50, 75, 100].map((pct) => (
+                            <TouchableOpacity
+                              key={pct}
+                              onPress={() => handleAlterarProgresso(matId, pct)}
+                              className={`px-2.5 py-1 rounded-lg ${
+                                progressoAtual === pct ? 'bg-brand' : 'bg-gray-200'
                               }`}
                             >
-                              {pct}%
-                            </Text>
-                          </TouchableOpacity>
-                        ))}
+                              <Text
+                                className={`text-[10px] font-poppins-bold ${
+                                  progressoAtual === pct ? 'text-white' : 'text-gray-800'
+                                }`}
+                              >
+                                {pct}%
+                              </Text>
+                            </TouchableOpacity>
+                          ))}
+                        </View>
                       </View>
                     </View>
-                  </View>
-                ))
+                  );
+                })
               )}
             </View>
           );
@@ -159,7 +174,7 @@ export default function AdminDashboardScreen() {
               }`}
             >
               <ChevronLeft size={16} color="#111827" />
-              <Text className="font-poppins-semibold text-xs ml-1">Anterior</Text>
+              <Text className="font-poppins-semibold text-xs ml-1 text-gray-900">Anterior</Text>
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -169,7 +184,7 @@ export default function AdminDashboardScreen() {
                 page + 1 >= totalPages ? 'opacity-40' : ''
               }`}
             >
-              <Text className="font-poppins-semibold text-xs mr-1">Seguinte</Text>
+              <Text className="font-poppins-semibold text-xs mr-1 text-gray-900">Seguinte</Text>
               <ChevronRight size={16} color="#111827" />
             </TouchableOpacity>
           </View>
