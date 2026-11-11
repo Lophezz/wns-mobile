@@ -13,4 +13,5 @@ export interface CursoRequestDTO {
   preco: number;
   cargaHoraria: number;
   tipoCurso: CursoRequestDTOTipoCurso;
+  ativo: boolean;
 }

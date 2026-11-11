@@ -8,7 +8,10 @@
 
 export * from './alternarStatus1Body';
 export * from './alternarStatusBody';
+export * from './atualizarAviso200';
+export * from './atualizarFaq200';
 export * from './aviso';
+export * from './avisoDTO';
 export * from './codeDTO';
 export * from './cupomRequestDTO';
 export * from './cupomResponseDTO';
@@ -20,6 +23,7 @@ export * from './cursoResponseDTO';
 export * from './cursoResponseDTOTipoCurso';
 export * from './emailRequestDTO';
 export * from './faq';
+export * from './faqUpdateDTO';
 export * from './login200';
 export * from './loginRequestDTO';
 export * from './logout200';

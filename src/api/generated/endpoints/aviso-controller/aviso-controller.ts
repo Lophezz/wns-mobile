@@ -25,7 +25,9 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
-  Aviso
+  AtualizarAviso200,
+  Aviso,
+  AvisoDTO
 } from '../../model';
 
 import { customInstance } from '../../../axios-instance';
@@ -196,6 +198,68 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getCriar2MutationOptions(options), queryClient);
+    }
+    export const atualizarAviso = (
+    id: string,
+    avisoDTO: AvisoDTO,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<AtualizarAviso200>(
+      {url: `/avisos/update/${id}`, method: 'PATCH',
+      headers: {'Content-Type': 'application/json', },
+      data: avisoDTO, signal
+    },
+      options);
+    }
+
+
+
+
+export const getAtualizarAvisoMutationKey = () => ['atualizarAviso'] as const;
+
+export const getAtualizarAvisoMutationOptions = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof atualizarAviso>>, TError,AtualizarAvisoMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof atualizarAviso>>, TError,AtualizarAvisoMutationVariables, TContext> => {
+
+const mutationKey = getAtualizarAvisoMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof atualizarAviso>>, AtualizarAvisoMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  atualizarAviso(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AtualizarAvisoMutationResult = NonNullable<Awaited<ReturnType<typeof atualizarAviso>>>
+    export type AtualizarAvisoMutationBody = AvisoDTO
+    export type AtualizarAvisoMutationError = unknown
+    export type AtualizarAvisoMutationVariables = {id: string;data: AvisoDTO}
+
+    export const useAtualizarAviso = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof atualizarAviso>>, TError,AtualizarAvisoMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof atualizarAviso>>,
+        TError,
+        AtualizarAvisoMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAtualizarAvisoMutationOptions(options), queryClient);
     }
     export const deletar1 = (
     id: string,

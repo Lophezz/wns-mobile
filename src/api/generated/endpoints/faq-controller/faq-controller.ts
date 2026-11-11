@@ -25,7 +25,9 @@ import type {
 } from '@tanstack/react-query';
 
 import type {
-  Faq
+  AtualizarFaq200,
+  Faq,
+  FaqUpdateDTO
 } from '../../model';
 
 import { customInstance } from '../../../axios-instance';
@@ -196,6 +198,68 @@ const {mutation: mutationOptions, request: requestOptions} = options ?
         TContext
       > => {
       return useMutation(getCriar1MutationOptions(options), queryClient);
+    }
+    export const atualizarFaq = (
+    id: string,
+    faqUpdateDTO: FaqUpdateDTO,
+ options?: SecondParameter<typeof customInstance>,signal?: AbortSignal
+) => {
+
+
+      return customInstance<AtualizarFaq200>(
+      {url: `/faq/update/${id}`, method: 'PATCH',
+      headers: {'Content-Type': 'application/json', },
+      data: faqUpdateDTO, signal
+    },
+      options);
+    }
+
+
+
+
+export const getAtualizarFaqMutationKey = () => ['atualizarFaq'] as const;
+
+export const getAtualizarFaqMutationOptions = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof atualizarFaq>>, TError,AtualizarFaqMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+): UseMutationOptions<Awaited<ReturnType<typeof atualizarFaq>>, TError,AtualizarFaqMutationVariables, TContext> => {
+
+const mutationKey = getAtualizarFaqMutationKey();
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof atualizarFaq>>, AtualizarFaqMutationVariables> = (props) => {
+          const {id,data} = props ?? {};
+
+          return  atualizarFaq(id,data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type AtualizarFaqMutationResult = NonNullable<Awaited<ReturnType<typeof atualizarFaq>>>
+    export type AtualizarFaqMutationBody = FaqUpdateDTO
+    export type AtualizarFaqMutationError = unknown
+    export type AtualizarFaqMutationVariables = {id: string;data: FaqUpdateDTO}
+
+    export const useAtualizarFaq = <TError = unknown,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof atualizarFaq>>, TError,AtualizarFaqMutationVariables, TContext>, request?: SecondParameter<typeof customInstance>}
+ , queryClient?: QueryClient): UseMutationResult<
+        Awaited<ReturnType<typeof atualizarFaq>>,
+        TError,
+        AtualizarFaqMutationVariables,
+        TContext
+      > => {
+      return useMutation(getAtualizarFaqMutationOptions(options), queryClient);
     }
     export const deletar = (
     id: string,

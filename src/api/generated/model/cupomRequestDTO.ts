@@ -7,7 +7,7 @@
  */
 
 export interface CupomRequestDTO {
-  codigo?: string;
+  codigo: string;
   cuponInitialDate?: string;
   cuponExpiration?: string;
   valor?: number;
