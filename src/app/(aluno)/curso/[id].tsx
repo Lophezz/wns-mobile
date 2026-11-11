@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -7,20 +7,26 @@ import {
   TouchableOpacity,
   ActivityIndicator,
   Linking,
-} from 'react-native';
-import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Clock, Ticket, CheckCircle2, MessageCircle } from 'lucide-react-native';
-import { useBuscarCursoPorId } from '../../../api/generated/endpoints/curso-controller/curso-controller';
-import { validarCupom } from '../../../api/generated/endpoints/cupom-controller/cupom-controller';
-import { formatCurrency } from '../../../utils/formatters';
-import { useToastStore } from '../../../store/toast-store';
+} from "react-native";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import {
+  ArrowLeft,
+  Clock,
+  Ticket,
+  CheckCircle2,
+  MessageCircle,
+} from "lucide-react-native";
+import { useBuscarCursoPorId } from "../../../api/generated/endpoints/curso-controller/curso-controller";
+import { validarCupom } from "../../../api/generated/endpoints/cupom-controller/cupom-controller";
+import { formatCurrency } from "../../../utils/formatters";
+import { useToastStore } from "../../../store/toast-store";
 
 export default function DetalheCursoScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
   const showToast = useToastStore((s) => s.showToast);
 
-  const [codigoCupom, setCodigoCupom] = useState('');
+  const [codigoCupom, setCodigoCupom] = useState("");
   const [validandoCupom, setValidandoCupom] = useState(false);
   const [descontoCupom, setDescontoCupom] = useState<number>(0);
   const [cupomAplicado, setCupomAplicado] = useState<string | null>(null);
@@ -32,36 +38,42 @@ export default function DetalheCursoScreen() {
   const curso: any = cursoData;
 
   const handleValidarCupom = async () => {
-    if (!codigoCupom.trim()) {
+    const code = codigoCupom.trim().toUpperCase();
+    if (!code) {
       showToast({
-        type: 'warning',
-        title: 'Atenção',
-        message: 'Digite o código do cupão antes de aplicar.',
+        type: "warning",
+        title: "Atenção",
+        message: "Digite o código do cupom antes de aplicar.",
       });
       return;
     }
 
     try {
       setValidandoCupom(true);
-      const res: any = await validarCupom(codigoCupom.trim().toUpperCase(), {
-        cursoId: String(id),
-      } as any);
+      const res: any = await validarCupom(code, { cursoId: String(id) });
 
-      const valorDesconto = Number(res?.valor || 0);
+      const valorDesconto = Number(res?.valor ?? res?.desconto ?? 0);
       setDescontoCupom(valorDesconto);
-      setCupomAplicado(codigoCupom.trim().toUpperCase());
+      setCupomAplicado(code);
       showToast({
-        type: 'success',
-        title: 'Cupão Aplicado!',
+        type: "success",
+        title: "Cupom Aplicado!",
         message: `Desconto de ${formatCurrency(valorDesconto)} validado para este curso.`,
       });
-    } catch {
+    } catch (err: any) {
       setDescontoCupom(0);
       setCupomAplicado(null);
+      const msgBackend =
+        err?.response?.data?.message ||
+        err?.response?.data?.erro ||
+        (typeof err?.response?.data === "string" ? err.response.data : null);
+
       showToast({
-        type: 'error',
-        title: 'Cupão inválido',
-        message: 'Este cupão não existe, expirou ou não é válido para este curso.',
+        type: "error",
+        title: "Cupom não aceito",
+        message:
+          msgBackend ||
+          "Este cupom não está vinculado a este curso, ainda não iniciou (fuso UTC) ou expirou.",
       });
     } finally {
       setValidandoCupom(false);
@@ -76,13 +88,15 @@ export default function DetalheCursoScreen() {
     );
   }
 
-  const precoBase = Number(curso.precoPromocional ?? curso.novoValor ?? curso.preco ?? 0);
+  const precoBase = Number(
+    curso.precoPromocional ?? curso.novoValor ?? curso.preco ?? 0,
+  );
   const precoFinal = Math.max(0, precoBase - descontoCupom);
 
   const handleSolicitarMatriculaWhatsApp = () => {
     const msg = `Olá! Gostaria de concluir minha matrícula no curso *${curso.titulo}* (${formatCurrency(
-      precoFinal
-    )})${cupomAplicado ? ` utilizando o cupão *${cupomAplicado}*` : ''}.`;
+      precoFinal,
+    )})${cupomAplicado ? ` utilizando o cupom *${cupomAplicado}*` : ""}.`;
     const url = `https://wa.me/5511952400814?text=${encodeURIComponent(msg)}`;
     Linking.openURL(url);
   };
@@ -98,13 +112,15 @@ export default function DetalheCursoScreen() {
         className="flex-row items-center mb-4"
       >
         <ArrowLeft size={20} color="#b30016" />
-        <Text className="text-brand font-poppins-semibold ml-2">Voltar ao catálogo</Text>
+        <Text className="text-brand font-poppins-semibold ml-2">
+          Voltar ao catálogo
+        </Text>
       </TouchableOpacity>
 
       <View className="bg-white rounded-2xl p-6 shadow-sm border border-gray-100 mb-5">
         <View className="self-start bg-red-50 px-3 py-1 rounded-full mb-3">
           <Text className="text-brand text-xs font-poppins-bold uppercase">
-            {curso.tipoCurso || 'Curso WNS'}
+            {curso.tipoCurso || "Curso WNS"}
           </Text>
         </View>
 
@@ -123,12 +139,11 @@ export default function DetalheCursoScreen() {
           {curso.descricao}
         </Text>
 
-        {/* Simulador de Cupão */}
         <View className="bg-gray-50 p-4 rounded-xl border border-gray-200 mb-6">
           <View className="flex-row items-center mb-2">
             <Ticket size={18} color="#b30016" />
             <Text className="text-xs font-poppins-bold text-gray-800 uppercase ml-2">
-              Possui um cupão de desconto?
+              Possui um cupom de desconto?
             </Text>
           </View>
 
@@ -148,7 +163,9 @@ export default function DetalheCursoScreen() {
               {validandoCupom ? (
                 <ActivityIndicator color="#ffffff" size="small" />
               ) : (
-                <Text className="text-white font-poppins-bold text-xs">APLICAR</Text>
+                <Text className="text-white font-poppins-bold text-xs">
+                  APLICAR
+                </Text>
               )}
             </TouchableOpacity>
           </View>
@@ -157,13 +174,13 @@ export default function DetalheCursoScreen() {
             <View className="flex-row items-center mt-2.5">
               <CheckCircle2 size={16} color="#15803d" />
               <Text className="text-green-700 text-xs font-poppins-semibold ml-1.5">
-                Cupão {cupomAplicado} aplicado (-{formatCurrency(descontoCupom)})
+                Cupom {cupomAplicado} aplicado (-{formatCurrency(descontoCupom)}
+                )
               </Text>
             </View>
           )}
         </View>
 
-        {/* Resumo de Valor */}
         <View className="flex-row items-center justify-between mb-6 pt-4 border-t border-gray-100">
           <Text className="text-sm font-poppins-semibold text-gray-600">
             Investimento Final:

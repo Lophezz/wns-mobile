@@ -38,7 +38,7 @@ export default function AlunoLayout() {
         headerTintColor: highContrast ? '#ffb400' : '#ffffff',
         headerTitleStyle: { fontFamily: 'Poppins_700Bold', fontSize: 18 },
         tabBarActiveTintColor: highContrast ? '#ffb400' : '#b30016',
-        tabBarInactiveTintColor: highContrast ? '#9ca3af' : '#9ca3af',
+        tabBarInactiveTintColor: '#9ca3af',
         tabBarHideOnKeyboard: true,
         tabBarStyle: {
           height: 60 + insets.bottom,
@@ -82,10 +82,12 @@ export default function AlunoLayout() {
           tabBarIcon: ({ color, size }) => <Bell color={color} size={size} />,
         }}
       />
+      {/* Oculta a tela de detalhes da barra inferior sem travar a navegação */}
       <Tabs.Screen
         name="curso/[id]"
         options={{
-          href: null,
+          tabBarButton: () => null,
+          tabBarItemStyle: { display: 'none' },
           title: 'Detalhes do Curso',
         }}
       />

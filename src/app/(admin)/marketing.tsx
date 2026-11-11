@@ -28,18 +28,15 @@ import {
 import { formatCurrency } from '../../utils/formatters';
 import { useToastStore } from '../../store/toast-store';
 
-// Formata para java.time.LocalDateTime (sem o 'Z' de UTC que causa erro 400 no Spring)
 const toJavaLocalDateTime = (date: Date) => date.toISOString().slice(0, 19);
 
 export default function AdminMarketingScreen() {
   const queryClient = useQueryClient();
   const showToast = useToastStore((s) => s.showToast);
 
-  // Estados para Novo Cupão
   const [codigo, setCodigo] = useState('');
   const [valorDesconto, setValorDesconto] = useState('');
 
-  // Estados para Nova Promoção
   const [nomeCampanha, setNomeCampanha] = useState('');
   const [novoValorPromo, setNovoValorPromo] = useState('');
   const [cursoPromoId, setCursoPromoId] = useState<string>('');
@@ -63,21 +60,24 @@ export default function AdminMarketingScreen() {
       showToast({
         type: 'warning',
         title: 'Campos obrigatórios',
-        message: 'Informe o código do cupão e um valor maior que zero.',
+        message: 'Informe o código do cupom e um valor maior que zero.',
       });
       return;
     }
 
-    const agora = new Date();
+    // Define data de início 24h no passado para nunca dar conflito de fuso horário UTC vs BRT no Java
+    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const trintaDiasDepois = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    const todosCursosIds = cursosAtivos.map((c: any) => String(c.id)).filter(Boolean);
 
     try {
       await criarCupomMutation.mutateAsync({
         data: {
           codigo: codigo.trim().toUpperCase(),
           valor: valorNum,
-          cuponInitialDate: toJavaLocalDateTime(agora),
+          cuponInitialDate: toJavaLocalDateTime(ontem),
           cuponExpiration: toJavaLocalDateTime(trintaDiasDepois),
+          cursoIds: todosCursosIds.length > 0 ? todosCursosIds : undefined,
         },
       });
       await queryClient.invalidateQueries({ queryKey: getListarCuponsQueryKey() });
@@ -85,14 +85,15 @@ export default function AdminMarketingScreen() {
       setValorDesconto('');
       showToast({
         type: 'success',
-        title: 'Cupão criado!',
-        message: 'Ative o interruptor abaixo para liberá-lo aos alunos.',
+        title: 'Cupom criado!',
+        message: 'Ative a chave na lista abaixo para liberá-lo aos alunos.',
       });
-    } catch {
+    } catch (err: any) {
+      const msg = err?.response?.data?.message || 'Verifique se este código já existe.';
       showToast({
         type: 'error',
-        title: 'Erro ao criar cupão',
-        message: 'Verifique se este código já existe no sistema.',
+        title: 'Erro ao criar cupom',
+        message: msg,
       });
     }
   };
@@ -108,7 +109,7 @@ export default function AdminMarketingScreen() {
       return;
     }
 
-    const agora = new Date();
+    const ontem = new Date(Date.now() - 24 * 60 * 60 * 1000);
     const trintaDiasDepois = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
 
     try {
@@ -117,7 +118,7 @@ export default function AdminMarketingScreen() {
           nomeCampanha: nomeCampanha.trim(),
           cursoId: cursoPromoId,
           novoValor: valorNum,
-          dataInicio: toJavaLocalDateTime(agora),
+          dataInicio: toJavaLocalDateTime(ontem),
           dataExpiracao: toJavaLocalDateTime(trintaDiasDepois),
         },
       });
@@ -135,7 +136,7 @@ export default function AdminMarketingScreen() {
       showToast({
         type: 'error',
         title: 'Erro ao criar promoção',
-        message: 'Não foi possível registar a campanha promocional.',
+        message: 'Não foi possível registrar a campanha promocional.',
       });
     }
   };
@@ -146,13 +147,13 @@ export default function AdminMarketingScreen() {
       await queryClient.invalidateQueries({ queryKey: getListarCuponsQueryKey() });
       showToast({
         type: 'success',
-        title: status ? 'Cupão Ativado' : 'Cupão Desativado',
+        title: status ? 'Cupom Ativado' : 'Cupom Desativado',
       });
     } catch {
       showToast({
         type: 'error',
         title: 'Erro',
-        message: 'Não foi possível alterar o estado do cupão.',
+        message: 'Não foi possível alterar o estado do cupom.',
       });
     }
   };
@@ -181,21 +182,20 @@ export default function AdminMarketingScreen() {
       contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
       keyboardShouldPersistTaps="handled"
     >
-      {/* 1. Criador de Cupão */}
       <View className="bg-white rounded-2xl p-4 mb-5 border border-gray-100 shadow-sm">
         <Text className="font-poppins-bold text-sm text-gray-900 mb-3">
-          Criar Novo Cupão (Validade: 30 dias)
+          Criar Novo Cupom (Validade: 30 dias)
         </Text>
         <View className="flex-row gap-2 mb-3">
           <TextInput
-            placeholder="Código (ex: WNS50)"
+            placeholder="Código (ex: WNS20)"
             value={codigo}
             onChangeText={setCodigo}
             autoCapitalize="characters"
             className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 font-poppins text-sm text-gray-900"
           />
           <TextInput
-            placeholder="Valor R$ (50.00)"
+            placeholder="Valor R$ (10.00)"
             value={valorDesconto}
             onChangeText={setValorDesconto}
             keyboardType="decimal-pad"
@@ -210,23 +210,22 @@ export default function AdminMarketingScreen() {
           {criarCupomMutation.isPending ? (
             <ActivityIndicator color="#ffffff" size="small" />
           ) : (
-            <Text className="text-white font-poppins-bold text-xs">CRIAR CUPÃO</Text>
+            <Text className="text-white font-poppins-bold text-xs">CRIAR CUPOM</Text>
           )}
         </TouchableOpacity>
       </View>
 
-      {/* Lista de Cupões */}
       <Text className="font-poppins-bold text-base text-gray-900 mb-2">
-        Cupões Cadastrados
+        Cupons Cadastrados
       </Text>
       {loadingCupons ? (
         <ActivityIndicator color="#b30016" className="my-4" />
       ) : (
-        cupons.map((cupom: any) => {
+        cupons.map((cupom: any, idx: number) => {
           const ativo = Boolean(cupom.isCupponActive ?? cupom.cupponActive);
           return (
             <View
-              key={String(cupom.id)}
+              key={String(cupom?.id ?? idx)}
               className="bg-white rounded-xl p-4 mb-2.5 flex-row justify-between items-center border border-gray-100"
             >
               <View>
@@ -247,7 +246,6 @@ export default function AdminMarketingScreen() {
         })
       )}
 
-      {/* 2. Criador de Campanha Promocional */}
       <View className="bg-white rounded-2xl p-4 mt-5 mb-5 border border-gray-100 shadow-sm">
         <Text className="font-poppins-bold text-sm text-gray-900 mb-3">
           Nova Campanha Promocional (30 dias)
@@ -260,7 +258,7 @@ export default function AdminMarketingScreen() {
             className="flex-1 border border-gray-200 rounded-xl px-3 py-2.5 font-poppins text-sm text-gray-900"
           />
           <TextInput
-            placeholder="Novo R$ (110.00)"
+            placeholder="Novo R$ (35.00)"
             value={novoValorPromo}
             onChangeText={setNovoValorPromo}
             keyboardType="decimal-pad"
@@ -272,12 +270,13 @@ export default function AdminMarketingScreen() {
           Selecione o Curso da Promoção:
         </Text>
         <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-3">
-          {cursosAtivos.map((c: any) => {
-            const selecionado = cursoPromoId === String(c.id);
+          {cursosAtivos.map((c: any, idx: number) => {
+            const idCurso = String(c?.id ?? idx);
+            const selecionado = cursoPromoId === idCurso;
             return (
               <TouchableOpacity
-                key={String(c.id)}
-                onPress={() => setCursoPromoId(String(c.id))}
+                key={idCurso}
+                onPress={() => setCursoPromoId(idCurso)}
                 className={`mr-2 px-3.5 py-2 rounded-xl border ${
                   selecionado ? 'bg-brand border-brand' : 'bg-gray-50 border-gray-200'
                 }`}
@@ -307,18 +306,17 @@ export default function AdminMarketingScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* Lista de Promoções */}
       <Text className="font-poppins-bold text-base text-gray-900 mb-2">
         Campanhas Promocionais (/promocoes)
       </Text>
       {loadingPromos ? (
         <ActivityIndicator color="#b30016" className="my-4" />
       ) : (
-        promocoes.map((promo: any) => {
+        promocoes.map((promo: any, idx: number) => {
           const ativa = Boolean(promo.isAtiva ?? promo.ativa);
           return (
             <View
-              key={String(promo.id)}
+              key={String(promo?.id ?? idx)}
               className="bg-white rounded-xl p-4 mb-2.5 flex-row justify-between items-center border border-gray-100"
             >
               <View className="flex-1 mr-3">

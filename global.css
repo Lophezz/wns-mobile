@@ -4,12 +4,12 @@
 
 @layer base {
   :root {
-    --color-surface: 246 246 246; 
-    --color-white: 255 255 255;   
-    --color-brand: 179 0 22;      
-    --color-brand-light: 255 246 247; 
+    --color-surface: 246 246 246;
+    --color-white: 255 255 255;
+    --color-brand: 179 0 22;
+    --color-brand-light: 255 246 247;
     --color-accent: 255 180 0;
-    
+
     --color-gray-50: 249 250 251;
     --color-gray-100: 243 244 246;
     --color-gray-200: 229 231 235;
@@ -22,22 +22,19 @@
     --color-gray-900: 17 24 39;
   }
 
-  .high-contrast {
-    /* Fundo preto e cards escuros */
-    --color-surface: 0 0 0;        
-    --color-white: 17 24 39;       
-    
-    /* O vermelho vira amarelo para o texto escuro ficar perfeitamente legível */
-    --color-brand: 255 180 0;      
-    --color-brand-light: 31 41 55; 
+  .dark {
+    /* Paleta de Alto Contraste gerenciada nativamente pelo NativeWind */
+    --color-surface: 0 0 0;
+    --color-white: 17 24 39;
+    --color-brand: 255 180 0;
+    --color-brand-light: 31 41 55;
     --color-accent: 255 255 255;
-    
-    /* Inversão da escala de cinzas */
-    --color-gray-50: 17 24 39;     
-    --color-gray-100: 31 41 55;    
-    --color-gray-200: 255 180 0;   /* Bordas viram amarelo neon */
-    --color-gray-300: 255 180 0;   
-    --color-gray-400: 255 255 255; /* Todos os textos viram branco puro */
+
+    --color-gray-50: 17 24 39;
+    --color-gray-100: 31 41 55;
+    --color-gray-200: 255 180 0;
+    --color-gray-300: 255 180 0;
+    --color-gray-400: 255 255 255;
     --color-gray-500: 255 255 255;
     --color-gray-600: 255 255 255;
     --color-gray-700: 255 255 255;

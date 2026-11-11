@@ -237,13 +237,11 @@ export default function LoginScreen() {
               <Text className="text-gray-600 font-poppins text-sm">
                 Ainda não é aluno?{" "}
               </Text>
-              <Link href="/(auth)/register" asChild>
-                <TouchableOpacity>
-                  <Text className="text-brand font-poppins-bold text-sm">
-                    Criar conta
-                  </Text>
-                </TouchableOpacity>
-              </Link>
+              <TouchableOpacity onPress={() => router.push("/(auth)/register")}>
+                <Text className="text-brand font-poppins-bold text-sm">
+                  Criar conta
+                </Text>
+              </TouchableOpacity>
             </View>
           </View>
         </View>

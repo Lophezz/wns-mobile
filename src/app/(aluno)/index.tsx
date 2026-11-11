@@ -5,49 +5,47 @@ import {
   FlatList,
   TouchableOpacity,
   ActivityIndicator,
-  TextInput,
+  ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Search, Clock, Tag, ChevronRight, Sparkles } from 'lucide-react-native';
+import { Clock, Tag, ChevronRight, Sparkles, AlertCircle } from 'lucide-react-native';
 import { useListarCursos } from '../../api/generated/endpoints/curso-controller/curso-controller';
 import { formatCurrency } from '../../utils/formatters';
 
+const CATEGORIAS = ['TODOS', 'PRESENCIAL', 'EAD', 'INGLES', 'INFORMATICA', 'EXCEL'] as const;
+
 export default function CatalogoAlunoScreen() {
   const router = useRouter();
-  const [busca, setBusca] = useState('');
-  const [categoriaSelecionada, setCategoriaSelecionada] = useState<string>('TODOS');
+  const [categoriaAtiva, setCategoriaAtiva] = useState<string>('TODOS');
 
-  // Hook gerado pelo Orval para GET /cursos (respeitando cache de 2 min para evitar HTTP 429)
-  const { data: cursos, isLoading, isError, error, refetch } = useListarCursos();
+  const { data: cursosData, isLoading, isError, error, refetch, isRefetching } = useListarCursos({
+    query: {
+      staleTime: 1000 * 60 * 3,
+      retry: false,
+    },
+  });
 
-  const listaCursos = Array.isArray(cursos) ? cursos : [];
-
-  // Extrai dinamicamente os tipos de curso cadastrados (ex: INGLES, INFORMATICA, etc.)
-  const categorias = useMemo(() => {
-    const tipos = new Set<string>();
-    listaCursos.forEach((c: any) => {
-      if (c.tipoCurso) tipos.add(c.tipoCurso.toUpperCase());
-    });
-    return ['TODOS', ...Array.from(tipos)];
-  }, [listaCursos]);
-
-  const cursosFiltrados = useMemo(() => {
-    return listaCursos.filter((curso: any) => {
-      const matchTexto =
-        curso.titulo?.toLowerCase().includes(busca.toLowerCase()) ||
-        curso.descricao?.toLowerCase().includes(busca.toLowerCase());
-      const matchCategoria =
-        categoriaSelecionada === 'TODOS' ||
-        curso.tipoCurso?.toUpperCase() === categoriaSelecionada;
-      return matchTexto && matchCategoria;
-    });
-  }, [listaCursos, busca, categoriaSelecionada]);
+  const listaCursos = useMemo(() => {
+    const raw = Array.isArray(cursosData) ? cursosData : [];
+    if (categoriaAtiva === 'TODOS') return raw;
+    return raw.filter(
+      (c: any) =>
+        String(c.tipoCurso || '')
+          .toUpperCase()
+          .includes(categoriaAtiva) ||
+        String(c.titulo || '')
+          .toUpperCase()
+          .includes(categoriaAtiva)
+    );
+  }, [cursosData, categoriaAtiva]);
 
   if (isLoading) {
     return (
       <View className="flex-1 bg-surface items-center justify-center p-6">
         <ActivityIndicator size="large" color="#b30016" />
-        <Text className="text-gray-600 font-poppins mt-3">Carregando cursos disponíveis...</Text>
+        <Text className="text-gray-600 font-poppins mt-3">
+          Carregando cursos disponíveis...
+        </Text>
       </View>
     );
   }
@@ -55,11 +53,12 @@ export default function CatalogoAlunoScreen() {
   if (isError) {
     return (
       <View className="flex-1 bg-surface items-center justify-center p-6">
-        <Text className="text-red-700 font-poppins-bold text-lg text-center mb-2">
-          Ops! Não foi possível carregar o catálogo
+        <AlertCircle size={48} color="#b30016" />
+        <Text className="text-lg font-poppins-bold text-gray-900 mt-3 text-center">
+          Limite de requisições ou falha na rede
         </Text>
-        <Text className="text-gray-600 font-poppins text-sm text-center mb-6">
-          {(error as any)?.message || 'Aguarde alguns instantes e tente atualizar.'}
+        <Text className="text-sm font-poppins text-gray-600 text-center mt-1 mb-5">
+          {(error as any)?.message || 'Aguarde alguns segundos antes de atualizar.'}
         </Text>
         <TouchableOpacity
           onPress={() => refetch()}
@@ -73,30 +72,15 @@ export default function CatalogoAlunoScreen() {
 
   return (
     <View className="flex-1 bg-surface">
-      {/* Barra de Busca e Categorias */}
-      <View className="bg-white px-5 pt-4 pb-3 border-b border-gray-100">
-        <View className="flex-row items-center bg-gray-100 rounded-xl px-3.5 py-2.5 mb-3">
-          <Search size={18} color="#6b7280" />
-          <TextInput
-            placeholder="Buscar curso de inglês, excel, programação..."
-            placeholderTextColor="#9ca3af"
-            value={busca}
-            onChangeText={setBusca}
-            className="flex-1 ml-2.5 font-poppins text-sm text-gray-900"
-          />
-        </View>
-
-        <FlatList
-          horizontal
-          showsHorizontalScrollIndicator={false}
-          data={categorias}
-          keyExtractor={(item) => item}
-          renderItem={({ item }) => {
-            const ativo = categoriaSelecionada === item;
+      <View className="bg-white py-3 px-4 border-b border-gray-100">
+        <ScrollView horizontal showsHorizontalScrollIndicator={false}>
+          {CATEGORIAS.map((cat) => {
+            const ativo = categoriaAtiva === cat;
             return (
               <TouchableOpacity
-                onPress={() => setCategoriaSelecionada(item)}
-                className={`mr-2 px-4 py-1.5 rounded-full border ${
+                key={cat}
+                onPress={() => setCategoriaAtiva(cat)}
+                className={`mr-2.5 px-4 py-2 rounded-full border ${
                   ativo
                     ? 'bg-brand border-brand'
                     : 'bg-gray-50 border-gray-200'
@@ -107,52 +91,54 @@ export default function CatalogoAlunoScreen() {
                     ativo ? 'text-white' : 'text-gray-700'
                   }`}
                 >
-                  {item}
+                  {cat}
                 </Text>
               </TouchableOpacity>
             );
-          }}
-        />
+          })}
+        </ScrollView>
       </View>
 
-      {/* Lista de Cursos */}
       <FlatList
-        data={cursosFiltrados}
-        keyExtractor={(item: any) => String(item.id)}
+        data={listaCursos}
+        keyExtractor={(item: any, index) => String(item?.id ?? index)}
         contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
+        refreshing={isRefetching}
+        onRefresh={refetch}
         ListEmptyComponent={
-          <View className="items-center justify-center py-12">
-            <Text className="text-gray-500 font-poppins text-base">
-              Nenhum curso encontrado.
+          <View className="bg-white rounded-2xl p-8 items-center border border-gray-100 mt-4">
+            <Text className="text-gray-800 font-poppins-bold text-base">
+              Nenhum curso encontrado
+            </Text>
+            <Text className="text-gray-500 font-poppins text-xs mt-1 text-center">
+              Não há cursos ativos nesta categoria no momento.
             </Text>
           </View>
         }
         renderItem={({ item }: { item: any }) => {
-          const precoPromo = item.precoPromocional ?? item.novoValor ?? null;
-          const temPromocao = precoPromo !== null && precoPromo < item.preco;
+          const precoOriginal = Number(item.preco ?? 0);
+          const precoPromo = item.precoPromocional ?? item.novoValor;
+          const temPromocao = precoPromo !== undefined && precoPromo !== null && Number(precoPromo) < precoOriginal;
 
           return (
             <TouchableOpacity
-              onPress={() =>
-                router.push({
-                  pathname: '/(aluno)/curso/[id]',
-                  params: { id: String(item.id) },
-                })
-              }
+              activeOpacity={0.85}
+              onPress={() => router.push(`/(aluno)/curso/${item.id}` as any)}
               className="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-gray-100"
             >
               <View className="flex-row justify-between items-start mb-2">
-                <View className="bg-red-50 px-3 py-1 rounded-full">
-                  <Text className="text-brand text-xs font-poppins-bold uppercase">
-                    {item.tipoCurso || 'Curso WNS'}
+                <View className="bg-red-50 px-3 py-1 rounded-full flex-row items-center">
+                  <Tag size={12} color="#b30016" />
+                  <Text className="text-brand text-xs font-poppins-bold ml-1.5 uppercase">
+                    {item.tipoCurso || 'Curso'}
                   </Text>
                 </View>
 
                 {temPromocao && (
-                  <View className="flex-row items-center bg-amber-100 px-2.5 py-1 rounded-full">
+                  <View className="bg-amber-100 px-2.5 py-1 rounded-full flex-row items-center">
                     <Sparkles size={12} color="#b45309" />
                     <Text className="text-amber-800 text-xs font-poppins-bold ml-1">
-                      PROMOÇÃO
+                      Oferta Ativa
                     </Text>
                   </View>
                 )}
@@ -161,18 +147,19 @@ export default function CatalogoAlunoScreen() {
               <Text className="text-lg font-poppins-bold text-gray-900 mb-1">
                 {item.titulo}
               </Text>
+
               <Text
                 numberOfLines={2}
-                className="text-sm font-poppins text-gray-600 mb-4"
+                className="text-gray-600 font-poppins text-xs mb-4 leading-5"
               >
-                {item.descricao}
+                {item.descricao || 'Formação completa na WNS School.'}
               </Text>
 
               <View className="flex-row items-center justify-between pt-3 border-t border-gray-100">
                 <View className="flex-row items-center">
-                  <Clock size={16} color="#6b7280" />
-                  <Text className="text-xs font-poppins-semibold text-gray-600 ml-1.5">
-                    {item.cargaHoraria}h de carga horária
+                  <Clock size={15} color="#6b7280" />
+                  <Text className="text-gray-600 font-poppins-semibold text-xs ml-1.5">
+                    {item.cargaHoraria || 0}h de carga
                   </Text>
                 </View>
 
@@ -181,7 +168,7 @@ export default function CatalogoAlunoScreen() {
                     {temPromocao ? (
                       <>
                         <Text className="text-xs font-poppins text-gray-400 line-through">
-                          {formatCurrency(item.preco)}
+                          {formatCurrency(precoOriginal)}
                         </Text>
                         <Text className="text-base font-poppins-bold text-green-700">
                           {formatCurrency(precoPromo)}
@@ -189,11 +176,11 @@ export default function CatalogoAlunoScreen() {
                       </>
                     ) : (
                       <Text className="text-base font-poppins-bold text-brand">
-                        {formatCurrency(item.preco)}
+                        {formatCurrency(precoOriginal)}
                       </Text>
                     )}
                   </View>
-                  <ChevronRight size={20} color="#b30016" />
+                  <ChevronRight size={18} color="#b30016" />
                 </View>
               </View>
             </TouchableOpacity>

@@ -5,22 +5,24 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { useQueryClient } from '@tanstack/react-query';
 import { Trash2, Edit2, X } from 'lucide-react-native';
 import {
   useListar2 as useListarAvisos,
   useCriar2 as useCriarAviso,
+  useAtualizarAviso,
   useDeletar1 as useDeletarAviso,
   getListar2QueryKey as getAvisosKey,
 } from '../../api/generated/endpoints/aviso-controller/aviso-controller';
 import {
   useListar1 as useListarFaqs,
   useCriar1 as useCriarFaq,
+  useAtualizarFaq,
   useDeletar as useDeletarFaq,
   getListar1QueryKey as getFaqsKey,
 } from '../../api/generated/endpoints/faq-controller/faq-controller';
-import { AXIOS_INSTANCE } from '../../api/axios-instance';
 import { useToastStore } from '../../store/toast-store';
 
 export default function AdminComunicacaoScreen() {
@@ -40,8 +42,11 @@ export default function AdminComunicacaoScreen() {
   const { data: faqsData } = useListarFaqs();
 
   const criarAvisoMutation = useCriarAviso();
+  const atualizarAvisoMutation = useAtualizarAviso();
   const deletarAvisoMutation = useDeletarAviso();
+
   const criarFaqMutation = useCriarFaq();
+  const atualizarFaqMutation = useAtualizarFaq();
   const deletarFaqMutation = useDeletarFaq();
 
   const avisos = Array.isArray(avisosData) ? avisosData : [];
@@ -54,12 +59,15 @@ export default function AdminComunicacaoScreen() {
     }
     try {
       if (avisoEditandoId) {
-        await AXIOS_INSTANCE.put(`/avisos/${avisoEditandoId}`, {
-          mensagem: mensagemAviso.trim(),
+        await atualizarAvisoMutation.mutateAsync({
+          id: avisoEditandoId,
+          data: { mensagem: mensagemAviso.trim() },
         });
-        showToast({ type: 'success', title: 'Aviso atualizado!' });
+        showToast({ type: 'success', title: 'Aviso atualizado com sucesso!' });
       } else {
-        await criarAvisoMutation.mutateAsync({ data: { mensagem: mensagemAviso.trim() } });
+        await criarAvisoMutation.mutateAsync({
+          data: { mensagem: mensagemAviso.trim() },
+        });
         showToast({ type: 'success', title: 'Aviso publicado no mural!' });
       }
       await queryClient.invalidateQueries({ queryKey: getAvisosKey() });
@@ -72,19 +80,29 @@ export default function AdminComunicacaoScreen() {
 
   const handleSalvarFaq = async () => {
     if (!perguntaFaq.trim() || !respostaFaq.trim()) {
-      showToast({ type: 'warning', title: 'Atenção', message: 'Preencha a pergunta e a resposta.' });
+      showToast({
+        type: 'warning',
+        title: 'Atenção',
+        message: 'Preencha a pergunta e a resposta.',
+      });
       return;
     }
     try {
       if (faqEditandoId) {
-        await AXIOS_INSTANCE.put(`/faqs/${faqEditandoId}`, {
-          pergunta: perguntaFaq.trim(),
-          resposta: respostaFaq.trim(),
+        await atualizarFaqMutation.mutateAsync({
+          id: faqEditandoId,
+          data: {
+            pergunta: perguntaFaq.trim(),
+            resposta: respostaFaq.trim(),
+          },
         });
-        showToast({ type: 'success', title: 'FAQ atualizada!' });
+        showToast({ type: 'success', title: 'FAQ atualizada com sucesso!' });
       } else {
         await criarFaqMutation.mutateAsync({
-          data: { pergunta: perguntaFaq.trim(), resposta: respostaFaq.trim() },
+          data: {
+            pergunta: perguntaFaq.trim(),
+            resposta: respostaFaq.trim(),
+          },
         });
         showToast({ type: 'success', title: 'Nova FAQ adicionada!' });
       }
@@ -97,6 +115,9 @@ export default function AdminComunicacaoScreen() {
     }
   };
 
+  const salvandoAviso = criarAvisoMutation.isPending || atualizarAvisoMutation.isPending;
+  const salvandoFaq = criarFaqMutation.isPending || atualizarFaqMutation.isPending;
+
   return (
     <ScrollView
       className="flex-1 bg-surface"
@@ -107,7 +128,7 @@ export default function AdminComunicacaoScreen() {
       <View className="bg-white rounded-2xl p-4 mb-5 border border-gray-100">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="font-poppins-bold text-sm text-gray-900">
-            {avisoEditandoId ? 'Editar Aviso' : 'Publicar Novo Aviso no Mural'}
+            {avisoEditandoId ? '✏️ Editando Aviso Selecionado' : 'Publicar Novo Aviso no Mural'}
           </Text>
           {avisoEditandoId && (
             <TouchableOpacity
@@ -115,10 +136,10 @@ export default function AdminComunicacaoScreen() {
                 setAvisoEditandoId(null);
                 setMensagemAviso('');
               }}
-              className="flex-row items-center"
+              className="flex-row items-center bg-gray-100 px-2.5 py-1 rounded-lg"
             >
-              <X size={16} color="#6b7280" />
-              <Text className="text-xs font-poppins text-gray-500 ml-1">Cancelar</Text>
+              <X size={14} color="#6b7280" />
+              <Text className="text-xs font-poppins-semibold text-gray-600 ml-1">Cancelar</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -132,29 +153,35 @@ export default function AdminComunicacaoScreen() {
         />
         <TouchableOpacity
           onPress={handleSalvarAviso}
+          disabled={salvandoAviso}
           className="bg-brand py-3 rounded-xl items-center"
         >
-          <Text className="text-white font-poppins-bold text-xs">
-            {avisoEditandoId ? 'SALVAR ALTERAÇÕES' : 'PUBLICAR AVISO'}
-          </Text>
+          {salvandoAviso ? (
+            <ActivityIndicator color="#ffffff" size="small" />
+          ) : (
+            <Text className="text-white font-poppins-bold text-xs">
+              {avisoEditandoId ? 'SALVAR ALTERAÇÕES DO AVISO' : 'PUBLICAR AVISO'}
+            </Text>
+          )}
         </TouchableOpacity>
 
-        {avisos.map((aviso: any) => (
+        {avisos.map((aviso: any, idx: number) => (
           <View
-            key={String(aviso.id)}
+            key={String(aviso?.id ?? idx)}
             className="flex-row items-center justify-between bg-gray-50 p-3 rounded-xl mt-2.5 border border-gray-100"
           >
             <Text className="font-poppins text-xs text-gray-800 flex-1 mr-2">
               {aviso.mensagem}
             </Text>
-            <View className="flex-row items-center gap-3">
+            <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={() => {
                   setAvisoEditandoId(String(aviso.id));
                   setMensagemAviso(aviso.mensagem || '');
                 }}
+                className="p-2 bg-blue-50 rounded-lg"
               >
-                <Edit2 size={17} color="#2563eb" />
+                <Edit2 size={16} color="#2563eb" />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={async () => {
@@ -166,8 +193,9 @@ export default function AdminComunicacaoScreen() {
                     showToast({ type: 'error', title: 'Erro ao remover aviso' });
                   }
                 }}
+                className="p-2 bg-red-50 rounded-lg"
               >
-                <Trash2 size={18} color="#dc2626" />
+                <Trash2 size={16} color="#dc2626" />
               </TouchableOpacity>
             </View>
           </View>
@@ -178,7 +206,7 @@ export default function AdminComunicacaoScreen() {
       <View className="bg-white rounded-2xl p-4 mb-8 border border-gray-100">
         <View className="flex-row justify-between items-center mb-2">
           <Text className="font-poppins-bold text-sm text-gray-900">
-            {faqEditandoId ? 'Editar Pergunta (FAQ)' : 'Adicionar Pergunta Frequente (FAQ)'}
+            {faqEditandoId ? '✏️ Editando FAQ Selecionada' : 'Adicionar Pergunta Frequente (FAQ)'}
           </Text>
           {faqEditandoId && (
             <TouchableOpacity
@@ -187,10 +215,10 @@ export default function AdminComunicacaoScreen() {
                 setPerguntaFaq('');
                 setRespostaFaq('');
               }}
-              className="flex-row items-center"
+              className="flex-row items-center bg-gray-100 px-2.5 py-1 rounded-lg"
             >
-              <X size={16} color="#6b7280" />
-              <Text className="text-xs font-poppins text-gray-500 ml-1">Cancelar</Text>
+              <X size={14} color="#6b7280" />
+              <Text className="text-xs font-poppins-semibold text-gray-600 ml-1">Cancelar</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -210,16 +238,21 @@ export default function AdminComunicacaoScreen() {
         />
         <TouchableOpacity
           onPress={handleSalvarFaq}
+          disabled={salvandoFaq}
           className="bg-gray-900 py-3 rounded-xl items-center"
         >
-          <Text className="text-white font-poppins-bold text-xs">
-            {faqEditandoId ? 'ATUALIZAR FAQ' : 'ADICIONAR FAQ'}
-          </Text>
+          {salvandoFaq ? (
+            <ActivityIndicator color="#ffffff" size="small" />
+          ) : (
+            <Text className="text-white font-poppins-bold text-xs">
+              {faqEditandoId ? 'SALVAR ALTERAÇÕES DA FAQ' : 'ADICIONAR FAQ'}
+            </Text>
+          )}
         </TouchableOpacity>
 
-        {faqs.map((faq: any) => (
+        {faqs.map((faq: any, idx: number) => (
           <View
-            key={String(faq.id)}
+            key={String(faq?.id ?? idx)}
             className="flex-row items-center justify-between bg-gray-50 p-3 rounded-xl mt-2.5 border border-gray-100"
           >
             <View className="flex-1 mr-2">
@@ -230,15 +263,16 @@ export default function AdminComunicacaoScreen() {
                 {faq.resposta}
               </Text>
             </View>
-            <View className="flex-row items-center gap-3">
+            <View className="flex-row items-center gap-2">
               <TouchableOpacity
                 onPress={() => {
                   setFaqEditandoId(String(faq.id));
                   setPerguntaFaq(faq.pergunta || '');
                   setRespostaFaq(faq.resposta || '');
                 }}
+                className="p-2 bg-blue-50 rounded-lg"
               >
-                <Edit2 size={17} color="#2563eb" />
+                <Edit2 size={16} color="#2563eb" />
               </TouchableOpacity>
               <TouchableOpacity
                 onPress={async () => {
@@ -250,8 +284,9 @@ export default function AdminComunicacaoScreen() {
                     showToast({ type: 'error', title: 'Erro ao remover FAQ' });
                   }
                 }}
+                className="p-2 bg-red-50 rounded-lg"
               >
-                <Trash2 size={18} color="#dc2626" />
+                <Trash2 size={16} color="#dc2626" />
               </TouchableOpacity>
             </View>
           </View>
