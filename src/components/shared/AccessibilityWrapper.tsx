@@ -1,17 +1,10 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { View, useWindowDimensions } from 'react-native';
-import { useColorScheme } from 'nativewind';
 import { useAccessibilityStore } from '../../store/accessibility-store';
 
 export function AccessibilityWrapper({ children }: { children: React.ReactNode }) {
-  const { fontScale, highContrast, colorBlindMode } = useAccessibilityStore();
+  const { fontScale, darkMode, highContrast, colorBlindMode } = useAccessibilityStore();
   const { width, height } = useWindowDimensions();
-  const { setColorScheme } = useColorScheme();
-
-  // Ativa/desativa as variáveis CSS do modo Alto Contraste (.dark) de forma nativa
-  useEffect(() => {
-    setColorScheme(highContrast ? 'dark' : 'light');
-  }, [highContrast, setColorScheme]);
 
   const overlayTint = {
     NONE: null,
@@ -21,9 +14,13 @@ export function AccessibilityWrapper({ children }: { children: React.ReactNode }
     MONOCHROME: 'rgba(0, 0, 0, 0.45)',
   };
 
+  // Cor de fundo base: Preto no Alto Contraste, Cinza-Azulado Fosco (#0f172a) no Dark Mode, e Claro no Light Mode
+  const bgColor = highContrast ? '#000000' : darkMode ? '#0f172a' : '#f6f6f6';
+
   return (
-    <View style={{ flex: 1, backgroundColor: highContrast ? '#000000' : '#f6f6f6' }}>
+    <View style={{ flex: 1, backgroundColor: bgColor }}>
       <View
+        key={`theme-${darkMode ? 'dark' : 'light'}-${highContrast ? 'hc' : 'std'}`}
         style={{
           width: width / fontScale,
           height: height / fontScale,
@@ -48,7 +45,7 @@ export function AccessibilityWrapper({ children }: { children: React.ReactNode }
             bottom: 0,
             zIndex: 9999,
             backgroundColor: overlayTint[colorBlindMode] || 'transparent',
-            borderWidth: highContrast ? 4 : 0,
+            borderWidth: highContrast ? 3 : 0,
             borderColor: '#ffb400',
           }}
         />

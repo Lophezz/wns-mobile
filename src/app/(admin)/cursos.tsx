@@ -14,7 +14,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useForm, Controller } from 'react-hook-form';
 import { z } from 'zod';
 import { zodResolver } from '@hookform/resolvers/zod';
-import { Plus, Eye, EyeOff, X } from 'lucide-react-native';
+import { Plus, Eye, EyeOff, X, Edit2 } from 'lucide-react-native';
 import {
   useListarTodosOsCursos,
   useCriarCurso,
@@ -25,7 +25,6 @@ import {
 import { formatCurrency } from '../../utils/formatters';
 import { useToastStore } from '../../store/toast-store';
 
-// 1. Esquema com o campo 'ativo' obrigatório exigido pelo CursoRequestDTO
 const cursoSchema = z.object({
   titulo: z.string().min(3, 'Informe o título do curso'),
   descricao: z.string().min(10, 'Informe uma descrição detalhada'),
@@ -41,8 +40,9 @@ export default function AdminCursosScreen() {
   const queryClient = useQueryClient();
   const showToast = useToastStore((s) => s.showToast);
   const [modalVisivel, setModalVisivel] = useState(false);
+  const [cursoEditandoId, setCursoEditandoId] = useState<string | null>(null);
 
-  const { data: cursosData, isLoading } = useListarTodosOsCursos();
+  const { data: cursosData, isLoading, isRefetching, refetch } = useListarTodosOsCursos();
   const criarCursoMutation = useCriarCurso();
   const atualizarCursoMutation = useAtualizarCurso();
 
@@ -61,11 +61,37 @@ export default function AdminCursosScreen() {
       preco: '',
       cargaHoraria: '',
       tipoCurso: 'PRESENCIAL',
-      ativo: true, // Inicia marcado como visível por padrão
+      ativo: true,
     },
   });
 
-  const onSubmitNovoCurso = async (data: CursoFormData) => {
+  const abrirModalNovo = () => {
+    setCursoEditandoId(null);
+    reset({
+      titulo: '',
+      descricao: '',
+      preco: '',
+      cargaHoraria: '',
+      tipoCurso: 'PRESENCIAL',
+      ativo: true,
+    });
+    setModalVisivel(true);
+  };
+
+  const abrirModalEdicao = (curso: any) => {
+    setCursoEditandoId(String(curso.id));
+    reset({
+      titulo: curso.titulo || '',
+      descricao: curso.descricao || '',
+      preco: String(curso.preco ?? ''),
+      cargaHoraria: String(curso.cargaHoraria ?? ''),
+      tipoCurso: curso.tipoCurso === 'EAD' ? 'EAD' : 'PRESENCIAL',
+      ativo: Boolean(curso.isActive ?? curso.active),
+    });
+    setModalVisivel(true);
+  };
+
+  const onSubmitCurso = async (data: CursoFormData) => {
     const precoNumerico = parseFloat(data.preco.replace(',', '.'));
     const cargaNumerica = parseInt(data.cargaHoraria, 10);
 
@@ -79,33 +105,52 @@ export default function AdminCursosScreen() {
     }
 
     try {
-      // 2. Envia o 'ativo: data.ativo' para o back-end
-      await criarCursoMutation.mutateAsync({
-        data: {
-          titulo: data.titulo.trim(),
-          descricao: data.descricao.trim(),
-          preco: precoNumerico,
-          cargaHoraria: cargaNumerica,
-          tipoCurso: data.tipoCurso as any,
-          ativo: data.ativo,
-        },
-      });
+      if (cursoEditandoId) {
+        await atualizarCursoMutation.mutateAsync({
+          id: cursoEditandoId,
+          data: {
+            titulo: data.titulo.trim(),
+            descricao: data.descricao.trim(),
+            preco: precoNumerico,
+            cargaHoraria: cargaNumerica,
+            tipoCurso: data.tipoCurso as any,
+            isActive: data.ativo,
+          },
+        });
+        showToast({
+          type: 'success',
+          title: 'Curso atualizado!',
+          message: 'As alterações do curso foram salvas com sucesso.',
+        });
+      } else {
+        await criarCursoMutation.mutateAsync({
+          data: {
+            titulo: data.titulo.trim(),
+            descricao: data.descricao.trim(),
+            preco: precoNumerico,
+            cargaHoraria: cargaNumerica,
+            tipoCurso: data.tipoCurso as any,
+            ativo: data.ativo,
+          },
+        });
+        showToast({
+          type: 'success',
+          title: 'Curso criado com sucesso!',
+          message: data.ativo
+            ? 'O curso já está publicado no catálogo dos alunos.'
+            : 'O curso foi salvo como oculto.',
+        });
+      }
 
       await queryClient.invalidateQueries({ queryKey: getListarTodosOsCursosQueryKey() });
       await queryClient.invalidateQueries({ queryKey: getListarCursosQueryKey() });
       reset();
+      setCursoEditandoId(null);
       setModalVisivel(false);
-      showToast({
-        type: 'success',
-        title: 'Curso criado com sucesso!',
-        message: data.ativo
-          ? 'O curso já está publicado no catálogo dos alunos.'
-          : 'O curso foi salvo como oculto. Ative-o na lista quando desejar.',
-      });
     } catch {
       showToast({
         type: 'error',
-        title: 'Erro ao criar curso',
+        title: 'Erro ao salvar curso',
         message: 'Verifique os campos preenchidos e tente novamente.',
       });
     }
@@ -135,6 +180,8 @@ export default function AdminCursosScreen() {
     }
   };
 
+  const salvando = criarCursoMutation.isPending || atualizarCursoMutation.isPending;
+
   return (
     <View className="flex-1 bg-surface">
       <View className="p-4 bg-white border-b border-gray-100 flex-row justify-between items-center">
@@ -143,11 +190,11 @@ export default function AdminCursosScreen() {
             Catálogo Completo (/cursos/all)
           </Text>
           <Text className="font-poppins text-gray-500 text-xs">
-            Ative o interruptor para tornar o curso visível aos alunos.
+            Toque em Editar para alterar dados ou no interruptor para ativar/ocultar.
           </Text>
         </View>
         <TouchableOpacity
-          onPress={() => setModalVisivel(true)}
+          onPress={abrirModalNovo}
           className="bg-brand px-4 py-2.5 rounded-xl flex-row items-center"
         >
           <Plus size={18} color="#ffffff" />
@@ -162,8 +209,12 @@ export default function AdminCursosScreen() {
       ) : (
         <FlatList
           data={cursos}
-          keyExtractor={(item: any) => String(item.id)}
+          keyExtractor={(item: any, idx) => String(item?.id ?? idx)}
           contentContainerStyle={{ padding: 16 }}
+          refreshing={isRefetching}
+          onRefresh={() => {
+            refetch();
+          }}
           renderItem={({ item }: { item: any }) => {
             const ativo = Boolean(item.isActive ?? item.active);
 
@@ -185,16 +236,28 @@ export default function AdminCursosScreen() {
                         ativo ? 'text-green-800' : 'text-gray-700'
                       }`}
                     >
-                      {ativo ? 'VISÍVEL (isActive: true)' : 'OCULTO (isActive: false)'}
+                      {ativo ? 'VISÍVEL' : 'OCULTO'}
                     </Text>
                   </View>
 
-                  <Switch
-                    value={ativo}
-                    onValueChange={(val) => handleToggleAtivo(item, val)}
-                    trackColor={{ false: '#d1d5db', true: '#b30016' }}
-                    thumbColor="#ffffff"
-                  />
+                  <View className="flex-row items-center gap-2">
+                    <TouchableOpacity
+                      onPress={() => abrirModalEdicao(item)}
+                      className="flex-row items-center px-3 py-1.5 bg-blue-50 rounded-lg border border-blue-200"
+                    >
+                      <Edit2 size={14} color="#2563eb" />
+                      <Text className="text-xs font-poppins-bold text-blue-700 ml-1">
+                        Editar
+                      </Text>
+                    </TouchableOpacity>
+
+                    <Switch
+                      value={ativo}
+                      onValueChange={(val) => handleToggleAtivo(item, val)}
+                      trackColor={{ false: '#d1d5db', true: '#b30016' }}
+                      thumbColor="#ffffff"
+                    />
+                  </View>
                 </View>
 
                 <Text className="text-base font-poppins-bold text-gray-900">
@@ -212,13 +275,12 @@ export default function AdminCursosScreen() {
         />
       )}
 
-      {/* Modal de Criação de Curso */}
       <Modal visible={modalVisivel} animationType="slide" transparent>
         <View className="flex-1 bg-black/50 justify-end">
           <View className="bg-white rounded-t-3xl p-6 max-h-[90%]">
             <View className="flex-row justify-between items-center mb-4">
               <Text className="text-lg font-poppins-bold text-gray-900">
-                Cadastrar Novo Curso
+                {cursoEditandoId ? '✏️ Editar Curso' : 'Cadastrar Novo Curso'}
               </Text>
               <TouchableOpacity onPress={() => setModalVisivel(false)}>
                 <X size={24} color="#6b7280" />
@@ -346,7 +408,6 @@ export default function AdminCursosScreen() {
                 <Text className="text-red-600 text-xs mb-2">{errors.descricao.message}</Text>
               )}
 
-              {/* 3. AQUI ESTÁ O SWITCH DENTRO DO MODAL DO FRONT-END */}
               <Controller
                 control={control}
                 name="ativo"
@@ -354,10 +415,10 @@ export default function AdminCursosScreen() {
                   <View className="flex-row items-center justify-between bg-gray-50 p-3.5 rounded-xl border border-gray-200 mt-3 mb-2">
                     <View className="flex-1 mr-3">
                       <Text className="font-poppins-bold text-xs text-gray-900">
-                        Publicar curso imediatamente?
+                        Curso visível no catálogo?
                       </Text>
                       <Text className="font-poppins text-[11px] text-gray-500">
-                        Se ativado, o curso já ficará visível no catálogo dos alunos.
+                        Se ativado, os alunos poderão ver e solicitar matrícula.
                       </Text>
                     </View>
                     <Switch
@@ -371,14 +432,16 @@ export default function AdminCursosScreen() {
               />
 
               <TouchableOpacity
-                onPress={() => handleSubmit(onSubmitNovoCurso)()}
-                disabled={criarCursoMutation.isPending}
+                onPress={() => handleSubmit(onSubmitCurso)()}
+                disabled={salvando}
                 className="bg-brand py-4 rounded-xl items-center mt-3 mb-4"
               >
-                {criarCursoMutation.isPending ? (
+                {salvando ? (
                   <ActivityIndicator color="#ffffff" />
                 ) : (
-                  <Text className="text-white font-poppins-bold">SALVAR CURSO</Text>
+                  <Text className="text-white font-poppins-bold">
+                    {cursoEditandoId ? 'SALVAR ALTERAÇÕES' : 'SALVAR CURSO'}
+                  </Text>
                 )}
               </TouchableOpacity>
             </ScrollView>

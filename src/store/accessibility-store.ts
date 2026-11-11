@@ -1,12 +1,20 @@
 import { create } from 'zustand';
 
-export type ColorBlindMode = 'NONE' | 'PROTANOPIA' | 'DEUTERANOPIA' | 'TRITANOPIA' | 'MONOCHROME';
+export type FontScaleLevel = 1 | 1.15 | 1.3;
+export type ColorBlindMode =
+  | 'NONE'
+  | 'PROTANOPIA'
+  | 'DEUTERANOPIA'
+  | 'TRITANOPIA'
+  | 'MONOCHROME';
 
 interface AccessibilityState {
-  fontScale: 1 | 1.15 | 1.3;
+  fontScale: FontScaleLevel;
+  darkMode: boolean;
   highContrast: boolean;
   colorBlindMode: ColorBlindMode;
-  setFontScale: (scale: 1 | 1.15 | 1.3) => void;
+  setFontScale: (scale: FontScaleLevel) => void;
+  toggleDarkMode: () => void;
   toggleHighContrast: () => void;
   setColorBlindMode: (mode: ColorBlindMode) => void;
   resetAccessibility: () => void;
@@ -14,12 +22,26 @@ interface AccessibilityState {
 
 export const useAccessibilityStore = create<AccessibilityState>((set) => ({
   fontScale: 1,
+  darkMode: false,
   highContrast: false,
   colorBlindMode: 'NONE',
-
   setFontScale: (fontScale) => set({ fontScale }),
-  toggleHighContrast: () => set((state) => ({ highContrast: !state.highContrast })),
+  toggleDarkMode: () =>
+    set((s) => ({
+      darkMode: !s.darkMode,
+      highContrast: false, // Desativa o alto contraste ao alternar modo escuro padrão
+    })),
+  toggleHighContrast: () =>
+    set((s) => ({
+      highContrast: !s.highContrast,
+      darkMode: !s.highContrast ? true : s.darkMode,
+    })),
   setColorBlindMode: (colorBlindMode) => set({ colorBlindMode }),
   resetAccessibility: () =>
-    set({ fontScale: 1, highContrast: false, colorBlindMode: 'NONE' }),
+    set({
+      fontScale: 1,
+      darkMode: false,
+      highContrast: false,
+      colorBlindMode: 'NONE',
+    }),
 }));

@@ -14,9 +14,12 @@ import { StatusBar } from 'expo-status-bar';
 import { useAuthStore } from '../store/auth-store';
 import { ToastBanner } from '../components/shared/ToastBanner';
 import { FloatingAccessibilityButton } from '../components/shared/FloatingAccessibilityButton';
-import { AccessibilityWrapper } from '../components/shared/AccessibilityWrapper'; // <-- Importe o wrapper!
+import { FloatingThemeButton } from '../components/shared/FloatingThemeButton';
+import { AccessibilityWrapper } from '../components/shared/AccessibilityWrapper';
+import { installThemeEngine } from '../utils/theme-engine';
 
 SplashScreen.preventAutoHideAsync();
+installThemeEngine();
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -56,16 +59,12 @@ export default function RootLayout() {
     <SafeAreaProvider>
       <QueryClientProvider client={queryClient}>
         <StatusBar style="light" />
-        
-        {/* Envelopa o App inteiro com a Acessibilidade (Zoom e Filtros) */}
         <AccessibilityWrapper>
           <ToastBanner />
           <Stack screenOptions={{ headerShown: false }} />
         </AccessibilityWrapper>
-        
-        {/* O botão flutuante fica de fora para não sofrer o Zoom e sair da tela! */}
+        <FloatingThemeButton />
         <FloatingAccessibilityButton />
-        
       </QueryClientProvider>
     </SafeAreaProvider>
   );
