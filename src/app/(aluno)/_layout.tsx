@@ -7,6 +7,7 @@ import { useAuthStore } from "../../store/auth-store";
 import { useToastStore } from "../../store/toast-store";
 import { useAccessibilityStore } from "../../store/accessibility-store";
 import { useLogout } from "../../api/generated/endpoints/auth-controller/auth-controller";
+import { useQueryClient } from "@tanstack/react-query";
 
 export default function AlunoLayout() {
   const router = useRouter();
@@ -16,6 +17,7 @@ export default function AlunoLayout() {
   const { darkMode, highContrast } = useAccessibilityStore();
   const isDark = darkMode || highContrast;
   const logoutMutation = useLogout();
+  const queryClient = useQueryClient();
 
   const handleLogout = async () => {
     try {
@@ -23,6 +25,7 @@ export default function AlunoLayout() {
     } catch {
       // Prossegue com logout local mesmo se falhar na rede
     }
+    queryClient.clear();
     await logoutStore();
     showToast({
       type: "success",
