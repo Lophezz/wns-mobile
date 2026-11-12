@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
@@ -23,7 +23,6 @@ import { usePesquisarUsuarios } from '../../api/generated/endpoints/auth-control
 import { useListarCursos } from '../../api/generated/endpoints/curso-controller/curso-controller';
 import {
   useMatricularAluno,
-  usePainelAdministrativo,
   getPainelAdministrativoQueryKey,
 } from '../../api/generated/endpoints/matricula-controller/matricula-controller';
 import { formatCurrency } from '../../utils/formatters';
@@ -45,42 +44,11 @@ export default function AdminUsuariosScreen() {
     size: 15,
   } as any);
 
-  // Busca também do painel administrativo, pois lá o back-end envia o UUID (id) de cada aluno
-  const { data: painelData, refetch: refetchPainel } = usePainelAdministrativo({
-    page: 0,
-    size: 200,
-  } as any);
-
   const { data: cursosAtivosData } = useListarCursos();
   const matricularMutation = useMatricularAluno();
 
-  // Mapa de email -> id (UUID) extraído do painel administrativo
-  const mapaIdPorEmail = useMemo(() => {
-    const map: Record<string, string> = {};
-    const listaPainel = Array.isArray((painelData as any)?.content)
-      ? (painelData as any).content
-      : [];
-    listaPainel.forEach((u: any) => {
-      const id = u.id ?? u.alunoId ?? u.usuarioId;
-      if (u.email && id) {
-        map[String(u.email).toLowerCase().trim()] = String(id);
-      }
-    });
-    return map;
-  }, [painelData]);
-
   const paginaUsuarios: any = pesquisaData;
-  const usuarios = useMemo(() => {
-    const raw = Array.isArray(paginaUsuarios?.content) ? paginaUsuarios.content : [];
-    return raw.map((item: any) => {
-      const emailKey = String(item.email || '').toLowerCase().trim();
-      return {
-        ...item,
-        id: item.id ?? item.alunoId ?? item.usuarioId ?? mapaIdPorEmail[emailKey],
-      };
-    });
-  }, [paginaUsuarios, mapaIdPorEmail]);
-
+  const usuarios = Array.isArray(paginaUsuarios?.content) ? paginaUsuarios.content : [];
   const totalPages = Number(paginaUsuarios?.totalPages || 1);
   const cursosAtivos = Array.isArray(cursosAtivosData) ? cursosAtivosData : [];
 
@@ -94,19 +62,17 @@ export default function AdminUsuariosScreen() {
       return;
     }
 
-    const emailKey = String(alunoSelecionado?.email || '').toLowerCase().trim();
+    // Lê exatamente o campo 'idAluno' que o back-end retorna no /auth/pesquisar
     const idDoAluno =
+      alunoSelecionado?.idAluno ??
       alunoSelecionado?.id ??
-      alunoSelecionado?.alunoId ??
-      alunoSelecionado?.usuarioId ??
-      mapaIdPorEmail[emailKey];
+      alunoSelecionado?.alunoId;
 
     if (!idDoAluno) {
       showToast({
         type: 'error',
-        title: 'ID do aluno não retornado pela API',
-        message:
-          'O endpoint /auth/pesquisar não enviou o UUID deste aluno. Verifique se a conta dele já está ativa.',
+        title: 'Erro ao identificar aluno',
+        message: 'Não foi possível localizar o idAluno deste usuário.',
       });
       return;
     }
@@ -141,7 +107,7 @@ export default function AdminUsuariosScreen() {
 
       showToast({
         type: 'error',
-        title: 'Recusado pelo servidor',
+        title: 'Não foi possível matricular',
         message:
           msgBackend ||
           'Verifique se o aluno já possui matrícula neste curso ou se o cupom é válido.',
@@ -184,7 +150,6 @@ export default function AdminUsuariosScreen() {
               refreshing={isRefetching}
               onRefresh={() => {
                 refetch();
-                refetchPainel();
               }}
               colors={['#b30016']}
             />
@@ -192,15 +157,17 @@ export default function AdminUsuariosScreen() {
         >
           {usuarios.map((item: any, idx: number) => {
             const verificado = Boolean(item.isEnable ?? item.enable ?? item.enabled);
+            const nomeExibicao = item.nomeCompleto || item.nome;
+
             return (
               <View
-                key={String(item?.id ?? item?.email ?? idx)}
+                key={String(item?.idAluno ?? item?.id ?? item?.email ?? idx)}
                 className="bg-white rounded-2xl p-4 mb-3 shadow-sm border border-gray-100 flex-row items-center justify-between"
               >
                 <View className="flex-1 mr-3">
-                  {item.nome && (
+                  {nomeExibicao && (
                     <Text className="font-poppins-bold text-sm text-gray-900">
-                      {item.nome}
+                      {nomeExibicao}
                     </Text>
                   )}
                   <Text className="font-poppins-semibold text-xs text-gray-700">

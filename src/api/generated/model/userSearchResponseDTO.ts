@@ -9,5 +9,6 @@
 export interface UserSearchResponseDTO {
   idAluno?: string;
   email?: string;
+  nome?: string;
   isEnable?: boolean;
 }
