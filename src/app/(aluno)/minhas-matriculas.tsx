@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -8,7 +8,10 @@ import {
   Modal,
   ScrollView,
   Linking,
+  TextInput,
 } from 'react-native';
+import * as Print from 'expo-print';
+import * as Sharing from 'expo-sharing';
 import {
   Award,
   CheckCircle,
@@ -17,15 +20,39 @@ import {
   Download,
   X,
   BookOpen,
+  UserCheck,
 } from 'lucide-react-native';
 import { useListarMinhasMatriculas } from '../../api/generated/endpoints/matricula-controller/matricula-controller';
 import { useListarCursos } from '../../api/generated/endpoints/curso-controller/curso-controller';
 import { useListarMateriais } from '../../api/generated/endpoints/material-curso-controller/material-curso-controller';
 import { formatCurrency, formatDate } from '../../utils/formatters';
 import { useToastStore } from '../../store/toast-store';
+import { useAuthStore } from '../../store/auth-store';
+
+// Tenta extrair o nome do aluno de dentro do Token JWT caso o back-end envie na claim "nome" ou "name"
+function extrairNomeDoToken(token: string | null): string {
+  if (!token) return '';
+  try {
+    const base64Url = token.split('.')[1];
+    if (!base64Url) return '';
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(
+      atob(base64)
+        .split('')
+        .map((c) => '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2))
+        .join('')
+    );
+    const payload = JSON.parse(jsonPayload);
+    return payload.nomeCompleto || payload.nome || payload.name || '';
+  } catch {
+    return '';
+  }
+}
 
 export default function MinhasMatriculasScreen() {
   const showToast = useToastStore((s) => s.showToast);
+  const { email: emailAluno, token } = useAuthStore();
+
   const { data, isLoading, isError, refetch, isRefetching } = useListarMinhasMatriculas();
   const { data: catalogoData } = useListarCursos();
 
@@ -34,8 +61,28 @@ export default function MinhasMatriculasScreen() {
     titulo: string;
   } | null>(null);
 
-  const matriculas = Array.isArray(data) ? data : [];
-  const catalogo = Array.isArray(catalogoData) ? catalogoData : [];
+  // Estado do Modal para confirmar o Nome Completo no Certificado
+  const [certificadoModal, setCertificadoModal] = useState<{
+    item: any;
+    nomeDoCurso: string;
+    cargaHoraria: number;
+  } | null>(null);
+  const [nomeParaCertificado, setNomeParaCertificado] = useState('');
+  const [gerandoCertificadoId, setGerandoCertificadoId] = useState<string | null>(null);
+
+  const nomeDoJwt = useMemo(() => extrairNomeDoToken(token), [token]);
+
+  const matriculas = Array.isArray(data)
+    ? data
+    : Array.isArray((data as any)?.content)
+    ? (data as any).content
+    : [];
+
+  const catalogo = Array.isArray(catalogoData)
+    ? catalogoData
+    : Array.isArray((catalogoData as any)?.content)
+    ? (catalogoData as any).content
+    : [];
 
   const { data: materiaisData, isLoading: loadingMateriais } = useListarMateriais(
     cursoMateriaisModal?.cursoId || '',
@@ -44,13 +91,14 @@ export default function MinhasMatriculasScreen() {
     }
   );
 
-  const materiais = Array.isArray(materiaisData) ? materiaisData : [];
+  const materiais = Array.isArray(materiaisData)
+    ? materiaisData
+    : Array.isArray((materiaisData as any)?.content)
+    ? (materiaisData as any).content
+    : [];
 
-  // Descobre o cursoId real da matrícula (mesmo se o DTO trouxer apenas o nomeCurso)
-  const obterCursoIdDaMatricula = (item: any): string => {
+  const obterCursoDaMatricula = (item: any) => {
     const idDireto = item.cursoId ?? item.idCurso ?? item.curso?.id;
-    if (idDireto) return String(idDireto);
-
     const nomeMat = String(
       item.nomeCurso || item.tituloCurso || item.cursoTitulo || item.titulo || ''
     )
@@ -58,9 +106,209 @@ export default function MinhasMatriculasScreen() {
       .trim();
 
     const encontrado = catalogo.find(
-      (c: any) => String(c.titulo || '').toLowerCase().trim() === nomeMat
+      (c: any) =>
+        (idDireto && String(c.id) === String(idDireto)) ||
+        String(c.titulo || '').toLowerCase().trim() === nomeMat
     );
-    return encontrado?.id ? String(encontrado.id) : '';
+
+    return {
+      cursoId: idDireto ? String(idDireto) : encontrado?.id ? String(encontrado.id) : '',
+      cargaHoraria: item.cargaHoraria || encontrado?.cargaHoraria || 40,
+    };
+  };
+
+  // Abre o modal já preenchendo o nome se vier da API ou do Token
+  const abrirConfirmacaoCertificado = (item: any, nomeDoCurso: string, cargaHoraria: number) => {
+    const nomeDetectado =
+      item.nomeAluno ||
+      item.nomeCompleto ||
+      item.nome ||
+      item.aluno?.nomeCompleto ||
+      item.aluno?.nome ||
+      nomeDoJwt ||
+      '';
+
+    if (!nomeParaCertificado.trim() && nomeDetectado) {
+      setNomeParaCertificado(String(nomeDetectado));
+    }
+
+    setCertificadoModal({ item, nomeDoCurso, cargaHoraria });
+  };
+
+  // Gera e compartilha/salva o Certificado Oficial em PDF da WNS School
+  const handleEmitirCertificado = async () => {
+    if (!certificadoModal) return;
+
+    const nomeFinal = nomeParaCertificado.trim();
+    if (nomeFinal.length < 3) {
+      showToast({
+        type: 'warning',
+        title: 'Informe seu nome completo',
+        message: 'Digite seu nome como deseja que apareça no certificado.',
+      });
+      return;
+    }
+
+    const { item, nomeDoCurso, cargaHoraria } = certificadoModal;
+    const idMat = String(item.id || item.matriculaId || nomeDoCurso);
+
+    try {
+      setGerandoCertificadoId(idMat);
+      const dataEmissao = formatDate(new Date().toISOString());
+      const codigoValidacao = `WNS-${idMat.slice(0, 8).toUpperCase()}-${new Date().getFullYear()}`;
+
+      const html = `
+        <!DOCTYPE html>
+        <html lang="pt-BR">
+        <head>
+          <meta charset="utf-8" />
+          <style>
+            @page { size: A4 landscape; margin: 0; }
+            body {
+              margin: 0;
+              padding: 36px;
+              font-family: Helvetica, Arial, sans-serif;
+              background-color: #f8fafc;
+              box-sizing: border-box;
+            }
+            .border-outer {
+              border: 10px solid #b30016;
+              padding: 12px;
+              background: #ffffff;
+              height: 680px;
+              box-sizing: border-box;
+            }
+            .border-inner {
+              border: 3px solid #ffb400;
+              height: 100%;
+              padding: 40px 60px;
+              box-sizing: border-box;
+              text-align: center;
+            }
+            .badge {
+              display: inline-block;
+              background: #b30016;
+              color: #ffb400;
+              font-weight: bold;
+              padding: 8px 24px;
+              border-radius: 30px;
+              font-size: 14px;
+              letter-spacing: 2px;
+              text-transform: uppercase;
+            }
+            h1 {
+              color: #111827;
+              font-size: 38px;
+              margin: 18px 0 6px 0;
+              letter-spacing: 1px;
+              text-transform: uppercase;
+            }
+            .subtitle {
+              color: #6b7280;
+              font-size: 16px;
+              margin-bottom: 24px;
+            }
+            .student-name {
+              font-size: 32px;
+              font-weight: bold;
+              color: #b30016;
+              border-bottom: 2px solid #e5e7eb;
+              display: inline-block;
+              padding: 0 36px 8px 36px;
+              margin: 10px 0 20px 0;
+              text-transform: capitalize;
+            }
+            .course-text {
+              font-size: 18px;
+              color: #374151;
+              line-height: 1.6;
+              max-width: 760px;
+              margin: 0 auto;
+            }
+            .course-title {
+              font-weight: bold;
+              color: #111827;
+              font-size: 22px;
+            }
+            .footer {
+              margin-top: 70px;
+              padding-top: 20px;
+              border-top: 1px solid #f3f4f6;
+              font-size: 13px;
+              color: #6b7280;
+              display: flex;
+              justify-content: space-between;
+              align-items: flex-end;
+            }
+            .signature {
+              border-top: 2px solid #111827;
+              padding-top: 6px;
+              width: 240px;
+              color: #111827;
+              font-weight: bold;
+            }
+          </style>
+        </head>
+        <body>
+          <div class="border-outer">
+            <div class="border-inner">
+              <div>
+                <span class="badge">WNS SCHOOL • ESCOLA DE IDIOMAS E TECNOLOGIA</span>
+                <h1>Certificado de Conclusão</h1>
+                <div class="subtitle">Certificamos para os devidos fins acadêmicos e profissionais que</div>
+                <div class="student-name">${nomeFinal}</div>
+                <div class="course-text">
+                  concluiu com <strong>100% de aproveitamento</strong> o curso de formação<br/>
+                  <span class="course-title">${nomeDoCurso}</span><br/>
+                  com carga horária total estimada de <strong>${cargaHoraria} horas</strong>.
+                </div>
+              </div>
+
+              <div class="footer">
+                <div style="text-align: left;">
+                  <strong>Data de Emissão:</strong> ${dataEmissao}<br/>
+                  <strong>E-mail do Aluno:</strong> ${emailAluno || '-'}<br/>
+                  <strong>Código de Validação:</strong> ${codigoValidacao}
+                </div>
+                <div class="signature">
+                  Diretoria Acadêmica<br/>
+                  <span style="font-weight: normal; font-size: 11px; color: #6b7280;">WNS School Brasil</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </body>
+        </html>
+      `;
+
+      setCertificadoModal(null);
+
+      try {
+        const file = await Print.printToFileAsync({ html });
+        const canShare = await Sharing.isAvailableAsync();
+
+        if (canShare && file?.uri) {
+          await Sharing.shareAsync(file.uri, {
+            mimeType: 'application/pdf',
+            dialogTitle: `Certificado - ${nomeDoCurso}`,
+            UTI: 'com.adobe.pdf',
+          });
+          return;
+        }
+      } catch {
+        // Fallback automático abaixo caso o compartilhamento falhe no emulador
+      }
+
+      await Print.printAsync({ html });
+    } catch (err: any) {
+      showToast({
+        type: 'error',
+        title: 'Erro ao gerar certificado',
+        message: err?.message || 'Não foi possível criar o arquivo PDF do certificado.',
+      });
+    } finally {
+      setGerandoCertificadoId(null);
+    }
   };
 
   if (isLoading) {
@@ -115,7 +363,8 @@ export default function MinhasMatriculasScreen() {
             item.titulo ||
             item.curso?.titulo ||
             'Curso WNS';
-          const cursoId = obterCursoIdDaMatricula(item);
+          const { cursoId, cargaHoraria } = obterCursoDaMatricula(item);
+          const idMat = String(item.id || item.matriculaId || nomeDoCurso);
 
           return (
             <View className="bg-white rounded-2xl p-5 mb-4 shadow-sm border border-gray-100">
@@ -135,7 +384,7 @@ export default function MinhasMatriculasScreen() {
                       concluida ? 'text-green-800' : 'text-blue-800'
                     }`}
                   >
-                    {item.status || 'EM ANDAMENTO'}
+                    {concluida ? 'CONCLUÍDO (100%)' : item.status || 'EM ANDAMENTO'}
                   </Text>
                 </View>
 
@@ -174,7 +423,7 @@ export default function MinhasMatriculasScreen() {
                 </Text>
               )}
 
-              {/* Botão de Materiais Didáticos (PDF) exclusivos de alunos matriculados */}
+              {/* Botão de Materiais Didáticos (PDF) */}
               <TouchableOpacity
                 onPress={() => {
                   if (!cursoId) {
@@ -194,10 +443,77 @@ export default function MinhasMatriculasScreen() {
                   ACESSAR MATERIAIS E APOSTILAS (PDF)
                 </Text>
               </TouchableOpacity>
+
+              {/* Botão Dourado de Certificado quando o curso atinge 100% */}
+              {concluida && (
+                <TouchableOpacity
+                  onPress={() => abrirConfirmacaoCertificado(item, nomeDoCurso, cargaHoraria)}
+                  disabled={gerandoCertificadoId === idMat}
+                  style={{ backgroundColor: '#ffb400' }}
+                  className="py-3.5 px-4 rounded-xl flex-row items-center justify-center mt-2.5 shadow-sm"
+                >
+                  {gerandoCertificadoId === idMat ? (
+                    <ActivityIndicator color="#111827" size="small" />
+                  ) : (
+                    <>
+                      <Award size={18} color="#111827" />
+                      <Text className="text-gray-900 font-poppins-bold text-xs ml-2">
+                        BAIXAR CERTIFICADO DE CONCLUSÃO (PDF)
+                      </Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              )}
             </View>
           );
         }}
       />
+
+      {/* Modal de Confirmação do Nome Completo para o Certificado */}
+      <Modal visible={!!certificadoModal} animationType="fade" transparent>
+        <View className="flex-1 bg-black/50 justify-center px-6">
+          <View className="bg-white rounded-3xl p-6">
+            <View className="flex-row justify-between items-center mb-3">
+              <View className="flex-row items-center">
+                <UserCheck size={20} color="#b30016" />
+                <Text className="text-base font-poppins-bold text-gray-900 ml-2">
+                  Emissão de Certificado
+                </Text>
+              </View>
+              <TouchableOpacity onPress={() => setCertificadoModal(null)}>
+                <X size={22} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+
+            <Text className="text-xs font-poppins text-gray-500 mb-3">
+              Confirme como seu <Text className="font-poppins-bold text-gray-800">Nome Completo</Text> deve aparecer impresso no diploma oficial do curso{' '}
+              <Text className="font-poppins-bold text-brand">
+                {certificadoModal?.nomeDoCurso}
+              </Text>
+              :
+            </Text>
+
+            <TextInput
+              placeholder="Digite seu nome e sobrenome completos..."
+              value={nomeParaCertificado}
+              onChangeText={setNomeParaCertificado}
+              autoCapitalize="words"
+              className="bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 font-poppins-semibold text-sm text-gray-900 mb-4"
+            />
+
+            <TouchableOpacity
+              onPress={handleEmitirCertificado}
+              style={{ backgroundColor: '#ffb400' }}
+              className="py-3.5 rounded-xl flex-row items-center justify-center"
+            >
+              <Award size={18} color="#111827" />
+              <Text className="text-gray-900 font-poppins-bold text-xs ml-2">
+                GERAR MEU CERTIFICADO AGORA
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
 
       {/* Modal de Apostilas e PDFs do Aluno */}
       <Modal visible={!!cursoMateriaisModal} animationType="slide" transparent>

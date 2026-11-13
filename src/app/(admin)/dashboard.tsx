@@ -1,56 +1,101 @@
-import React, { useState } from 'react';
+import { useQueryClient } from "@tanstack/react-query";
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
+  ChevronLeft,
+  ChevronRight,
+  GraduationCap,
+  TrendingUp,
+  Users
+} from "lucide-react-native";
+import { useMemo, useState } from "react";
+import {
   ActivityIndicator,
-} from 'react-native';
-import { useQueryClient } from '@tanstack/react-query';
-import { UserCheck, ChevronLeft, ChevronRight } from 'lucide-react-native';
+  FlatList,
+  Text,
+  TouchableOpacity,
+  View,
+} from "react-native";
 import {
-  usePainelAdministrativo,
-  useAtualizarMatriculaAdmin,
   getPainelAdministrativoQueryKey,
-} from '../../api/generated/endpoints/matricula-controller/matricula-controller';
-import { useToastStore } from '../../store/toast-store';
+  useAtualizarMatriculaAdmin,
+  usePainelAdministrativo,
+} from "../../api/generated/endpoints/matricula-controller/matricula-controller";
+import { useToastStore } from "../../store/toast-store";
+import { formatCurrency } from "../../utils/formatters";
 
 export default function AdminDashboardScreen() {
+  const [page, setPage] = useState(0);
   const queryClient = useQueryClient();
   const showToast = useToastStore((s) => s.showToast);
-  const [page, setPage] = useState(0);
 
-  const { data, isLoading, isError, refetch } = usePainelAdministrativo({
+  const { data, isLoading, isRefetching, refetch } = usePainelAdministrativo({
     page,
     size: 10,
   } as any);
 
-  const atualizarMatriculaMutation = useAtualizarMatriculaAdmin();
+  const atualizarStatusMutation = useAtualizarMatriculaAdmin();
 
-  const paginaDados: any = data;
-  const alunos = Array.isArray(paginaDados?.content) ? paginaDados.content : [];
-  const totalPages = Number(paginaDados?.totalPages || 1);
+  const pagina: any = data;
+  const listaAlunos: any[] = Array.isArray(pagina?.content)
+    ? pagina.content
+    : Array.isArray(pagina)
+      ? pagina
+      : [];
+  const totalPages = Number(pagina?.totalPages || 1);
+  const totalElements = Number(pagina?.totalElements || listaAlunos.length);
 
-  const handleAlterarProgresso = async (matriculaId: string, novoProgresso: number) => {
+  // Calcula KPIs Acadêmicos e Financeiros a partir dos dados carregados
+  const kpis = useMemo(() => {
+    let ativas = 0;
+    let concluidas = 0;
+    let receitaTotal = 0;
+
+    listaAlunos.forEach((aluno: any) => {
+      const mats = Array.isArray(aluno.matriculas)
+        ? aluno.matriculas
+        : Array.isArray(aluno.cursos)
+          ? aluno.cursos
+          : [];
+
+      mats.forEach((m: any) => {
+        const prog = Number(m.progresso || 0);
+        if (m.status === "CONCLUIDA" || prog >= 100) {
+          concluidas += 1;
+        } else {
+          ativas += 1;
+        }
+        receitaTotal += Number(m.valorPago ?? m.preco ?? 0);
+      });
+    });
+
+    return { ativas, concluidas, receitaTotal };
+  }, [listaAlunos]);
+
+  const handleAlterarProgresso = async (
+    matriculaId: string,
+    novoProgresso: number,
+  ) => {
     try {
-      await atualizarMatriculaMutation.mutateAsync({
+      const novoStatus = novoProgresso >= 100 ? "CONCLUIDA" : "ATIVA";
+      await atualizarStatusMutation.mutateAsync({
         id: matriculaId,
         data: {
           progresso: novoProgresso,
-          status: novoProgresso >= 100 ? ('CONCLUIDA' as any) : ('ATIVA' as any),
+          status: novoStatus as any,
         },
       });
-      await queryClient.invalidateQueries({ queryKey: getPainelAdministrativoQueryKey() });
+      await queryClient.invalidateQueries({
+        queryKey: getPainelAdministrativoQueryKey(),
+      });
       showToast({
-        type: 'success',
-        title: 'Progresso atualizado!',
-        message: `O progresso do aluno foi definido para ${novoProgresso}%.`,
+        type: "success",
+        title: "Progresso atualizado!",
+        message: `Definido para ${novoProgresso}% (${novoStatus}).`,
       });
     } catch {
       showToast({
-        type: 'error',
-        title: 'Erro ao atualizar',
-        message: 'Não foi possível alterar o progresso desta matrícula.',
+        type: "error",
+        title: "Erro ao atualizar",
+        message: "Não foi possível atualizar o progresso da matrícula.",
       });
     }
   };
@@ -63,99 +108,143 @@ export default function AdminDashboardScreen() {
     );
   }
 
-  if (isError) {
-    return (
-      <View className="flex-1 bg-surface items-center justify-center p-6">
-        <Text className="text-gray-700 font-poppins-semibold mb-4 text-center">
-          Erro ao carregar o painel administrativo.
-        </Text>
-        <TouchableOpacity onPress={() => refetch()} className="bg-brand px-5 py-3 rounded-xl">
-          <Text className="text-white font-poppins-bold">Tentar Novamente</Text>
-        </TouchableOpacity>
-      </View>
-    );
-  }
-
   return (
     <View className="flex-1 bg-surface">
       <FlatList
-        data={alunos}
-        keyExtractor={(item: any) => String(item.id || item.alunoId || item.email)}
+        data={listaAlunos}
+        keyExtractor={(item: any, idx) => String(item.id || item.email || idx)}
         contentContainerStyle={{ padding: 16 }}
+        refreshing={isRefetching}
+        onRefresh={() => {
+          refetch();
+        }}
         ListHeaderComponent={
-          <View className="bg-gray-900 rounded-2xl p-4 mb-4 flex-row items-center justify-between">
-            <View>
-              <Text className="text-white font-poppins-bold text-base">
-                Relatório de Alunos e Cursos
-              </Text>
-              <Text className="text-gray-400 font-poppins text-xs">
-                Página {page + 1} de {Math.max(1, totalPages)}
-              </Text>
+          <View className="mb-4">
+            {/* 3 Cards de KPIs Executivos */}
+            <View className="flex-row gap-2.5 mb-2.5">
+              <View className="flex-1 bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-[11px] font-poppins-bold text-gray-500 uppercase">
+                    Alunos
+                  </Text>
+                  <Users size={16} color="#b30016" />
+                </View>
+                <Text className="text-2xl font-poppins-bold text-gray-900">
+                  {totalElements}
+                </Text>
+                <Text className="text-[11px] font-poppins text-gray-500">
+                  Com matrícula
+                </Text>
+              </View>
+
+              <View className="flex-1 bg-white rounded-2xl p-4 border border-gray-100 shadow-sm">
+                <View className="flex-row items-center justify-between mb-1">
+                  <Text className="text-[11px] font-poppins-bold text-gray-500 uppercase">
+                    Matrículas
+                  </Text>
+                  <GraduationCap size={16} color="#15803d" />
+                </View>
+                <Text className="text-2xl font-poppins-bold text-gray-900">
+                  {kpis.ativas + kpis.concluidas}
+                </Text>
+                <Text className="text-[11px] font-poppins text-green-700">
+                  {kpis.ativas} ativas • {kpis.concluidas} concl.
+                </Text>
+              </View>
             </View>
-            <UserCheck color="#ffb400" size={28} />
+
+            {/* Card Financeiro */}
+            <View className="bg-white rounded-2xl p-4 border border-gray-100 shadow-sm flex-row items-center justify-between">
+              <View>
+                <Text className="text-[11px] font-poppins-bold text-gray-500 uppercase">
+                  Receita Registrada nas Matrículas
+                </Text>
+                <Text className="text-xl font-poppins-bold text-brand mt-0.5">
+                  {formatCurrency(kpis.receitaTotal)}
+                </Text>
+              </View>
+              <View className="w-10 h-10 rounded-xl bg-red-50 items-center justify-center">
+                <TrendingUp size={20} color="#b30016" />
+              </View>
+            </View>
+          </View>
+        }
+        ListEmptyComponent={
+          <View className="bg-white rounded-2xl p-8 items-center border border-gray-100">
+            <Text className="text-gray-700 font-poppins-semibold">
+              Nenhum registro encontrado nesta página.
+            </Text>
           </View>
         }
         renderItem={({ item }: { item: any }) => {
-          const cursosDoAluno = Array.isArray(item.cursos) ? item.cursos : [];
+          const matriculasAluno: any[] = Array.isArray(item.matriculas)
+            ? item.matriculas
+            : Array.isArray(item.cursos)
+              ? item.cursos
+              : [];
 
           return (
-            <View className="bg-white rounded-2xl p-4 mb-4 shadow-sm border border-gray-100">
+            <View className="bg-white rounded-2xl p-4 mb-3.5 shadow-sm border border-gray-100">
               <Text className="text-base font-poppins-bold text-gray-900">
-                {item.nome}
+                {item.nome || item.nomeAluno || "Aluno WNS"}
               </Text>
               <Text className="text-xs font-poppins text-gray-500 mb-3">
                 {item.email}
               </Text>
 
-              {cursosDoAluno.length === 0 ? (
-                <View className="bg-gray-50 p-3 rounded-xl">
-                  <Text className="text-xs font-poppins text-gray-400">
-                    Sem matrículas registadas.
-                  </Text>
-                </View>
+              {matriculasAluno.length === 0 ? (
+                <Text className="text-xs font-poppins text-gray-400 italic">
+                  Sem matrículas registradas.
+                </Text>
               ) : (
-                cursosDoAluno.map((mat: any) => {
-                  const matId = String(mat.id ?? mat.matriculaId);
-                  const nomeCurso = mat.titulo ?? mat.tituloCurso ?? 'Curso WNS';
-                  const progressoAtual = Number(mat.progresso || 0);
+                matriculasAluno.map((mat: any, mIdx: number) => {
+                  const matId = String(mat.id || mat.matriculaId || mIdx);
+                  const progAtual = Number(mat.progresso || 0);
+                  const nomeDoCurso =
+                    mat.nomeCurso ||
+                    mat.tituloCurso ||
+                    mat.cursoTitulo ||
+                    mat.titulo ||
+                    mat.curso?.titulo ||
+                    "Curso";
 
                   return (
                     <View
                       key={matId}
-                      className="bg-gray-50 p-3 rounded-xl mb-2 border border-gray-200"
+                      className="bg-gray-50 rounded-xl p-3 mb-2 border border-gray-200"
                     >
-                      <View className="flex-row justify-between items-center mb-1">
-                        <Text className="font-poppins-bold text-xs text-gray-800 flex-1 mr-2">
-                          {nomeCurso}
+                      <View className="flex-row justify-between items-center mb-2">
+                        <Text className="text-xs font-poppins-bold text-gray-800 flex-1 mr-2">
+                          {nomeDoCurso}
                         </Text>
                         <Text className="text-xs font-poppins-bold text-brand">
-                          {progressoAtual.toFixed(0)}% • {mat.status}
+                          {mat.status || "ATIVA"} ({progAtual}%)
                         </Text>
                       </View>
 
-                      <View className="flex-row items-center justify-between mt-2 pt-2 border-t border-gray-200">
-                        <Text className="text-[11px] font-poppins text-gray-500">
-                          Definir progresso:
-                        </Text>
-                        <View className="flex-row gap-1.5">
-                          {[0, 25, 50, 75, 100].map((pct) => (
+                      <View className="flex-row justify-between gap-1.5 mt-1">
+                        {[0, 25, 50, 75, 100].map((pct) => {
+                          const ativo = Math.round(progAtual) === pct;
+                          return (
                             <TouchableOpacity
                               key={pct}
                               onPress={() => handleAlterarProgresso(matId, pct)}
-                              className={`px-2.5 py-1 rounded-lg ${
-                                progressoAtual === pct ? 'bg-brand' : 'bg-gray-200'
+                              className={`flex-1 py-1.5 rounded-lg items-center border ${
+                                ativo
+                                  ? "bg-brand border-brand"
+                                  : "bg-white border-gray-300"
                               }`}
                             >
                               <Text
-                                className={`text-[10px] font-poppins-bold ${
-                                  progressoAtual === pct ? 'text-white' : 'text-gray-800'
+                                className={`text-xs font-poppins-bold ${
+                                  ativo ? "text-white" : "text-gray-700"
                                 }`}
                               >
                                 {pct}%
                               </Text>
                             </TouchableOpacity>
-                          ))}
-                        </View>
+                          );
+                        })}
                       </View>
                     </View>
                   );
@@ -170,21 +259,29 @@ export default function AdminDashboardScreen() {
               disabled={page <= 0}
               onPress={() => setPage((p) => Math.max(0, p - 1))}
               className={`flex-row items-center px-4 py-2.5 rounded-xl bg-white border border-gray-200 ${
-                page <= 0 ? 'opacity-40' : ''
+                page <= 0 ? "opacity-40" : ""
               }`}
             >
               <ChevronLeft size={16} color="#111827" />
-              <Text className="font-poppins-semibold text-xs ml-1 text-gray-900">Anterior</Text>
+              <Text className="font-poppins-semibold text-xs ml-1 text-gray-900">
+                Anterior
+              </Text>
             </TouchableOpacity>
+
+            <Text className="text-xs font-poppins text-gray-500">
+              Página {page + 1} de {totalPages}
+            </Text>
 
             <TouchableOpacity
               disabled={page + 1 >= totalPages}
               onPress={() => setPage((p) => p + 1)}
               className={`flex-row items-center px-4 py-2.5 rounded-xl bg-white border border-gray-200 ${
-                page + 1 >= totalPages ? 'opacity-40' : ''
+                page + 1 >= totalPages ? "opacity-40" : ""
               }`}
             >
-              <Text className="font-poppins-semibold text-xs mr-1 text-gray-900">Seguinte</Text>
+              <Text className="font-poppins-semibold text-xs mr-1 text-gray-900">
+                Seguinte
+              </Text>
               <ChevronRight size={16} color="#111827" />
             </TouchableOpacity>
           </View>

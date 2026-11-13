@@ -3,12 +3,22 @@ import {
   View,
   Text,
   FlatList,
+  TextInput,
   TouchableOpacity,
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Clock, Tag, ChevronRight, Sparkles, AlertCircle } from 'lucide-react-native';
+import {
+  Clock,
+  Tag,
+  ChevronRight,
+  Sparkles,
+  AlertCircle,
+  Search,
+  ArrowUpDown,
+  X,
+} from 'lucide-react-native';
 import { useListarCursos } from '../../api/generated/endpoints/curso-controller/curso-controller';
 import { formatCurrency } from '../../utils/formatters';
 
@@ -17,6 +27,8 @@ const CATEGORIAS = ['TODOS', 'PRESENCIAL', 'EAD', 'INGLES', 'INFORMATICA', 'EXCE
 export default function CatalogoAlunoScreen() {
   const router = useRouter();
   const [categoriaAtiva, setCategoriaAtiva] = useState<string>('TODOS');
+  const [buscaTexto, setBuscaTexto] = useState<string>('');
+  const [ordenarMenorPreco, setOrdenarMenorPreco] = useState<boolean>(false);
 
   const { data: cursosData, isLoading, isError, error, refetch, isRefetching } = useListarCursos({
     query: {
@@ -26,18 +38,36 @@ export default function CatalogoAlunoScreen() {
   });
 
   const listaCursos = useMemo(() => {
-    const raw = Array.isArray(cursosData) ? cursosData : [];
-    if (categoriaAtiva === 'TODOS') return raw;
-    return raw.filter(
-      (c: any) =>
-        String(c.tipoCurso || '')
-          .toUpperCase()
-          .includes(categoriaAtiva) ||
-        String(c.titulo || '')
-          .toUpperCase()
-          .includes(categoriaAtiva)
-    );
-  }, [cursosData, categoriaAtiva]);
+    const raw = Array.isArray(cursosData)
+      ? cursosData
+      : Array.isArray((cursosData as any)?.content)
+      ? (cursosData as any).content
+      : [];
+
+    const filtrados = raw.filter((c: any) => {
+      const titulo = String(c.titulo || '').toUpperCase();
+      const desc = String(c.descricao || '').toUpperCase();
+      const tipo = String(c.tipoCurso || '').toUpperCase();
+
+      const bateCategoria =
+        categoriaAtiva === 'TODOS' ||
+        tipo.includes(categoriaAtiva) ||
+        titulo.includes(categoriaAtiva);
+
+      const termo = buscaTexto.trim().toUpperCase();
+      const bateTexto = !termo || titulo.includes(termo) || desc.includes(termo);
+
+      return bateCategoria && bateTexto;
+    });
+
+    if (!ordenarMenorPreco) return filtrados;
+
+    return [...filtrados].sort((a: any, b: any) => {
+      const precoA = Number(a.precoPromocional ?? a.novoValor ?? a.preco ?? 0);
+      const precoB = Number(b.precoPromocional ?? b.novoValor ?? b.preco ?? 0);
+      return precoA - precoB;
+    });
+  }, [cursosData, categoriaAtiva, buscaTexto, ordenarMenorPreco]);
 
   if (isLoading) {
     return (
@@ -72,7 +102,42 @@ export default function CatalogoAlunoScreen() {
 
   return (
     <View className="flex-1 bg-surface">
-      <View className="bg-white py-3 px-4 border-b border-gray-100">
+      <View className="bg-white pt-3 pb-2.5 px-4 border-b border-gray-100">
+        <View className="flex-row items-center gap-2 mb-2.5">
+          <View className="flex-1 flex-row items-center bg-gray-100 rounded-xl px-3 py-2">
+            <Search size={16} color="#6b7280" />
+            <TextInput
+              placeholder="Buscar curso pelo nome..."
+              value={buscaTexto}
+              onChangeText={setBuscaTexto}
+              className="flex-1 ml-2 font-poppins text-xs text-gray-900"
+            />
+            {buscaTexto.length > 0 && (
+              <TouchableOpacity onPress={() => setBuscaTexto('')}>
+                <X size={16} color="#6b7280" />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => setOrdenarMenorPreco((v) => !v)}
+            className={`flex-row items-center px-3 py-2.5 rounded-xl border ${
+              ordenarMenorPreco
+                ? 'bg-brand border-brand'
+                : 'bg-gray-50 border-gray-200'
+            }`}
+          >
+            <ArrowUpDown size={14} color={ordenarMenorPreco ? '#ffffff' : '#374151'} />
+            <Text
+              className={`text-[11px] font-poppins-bold ml-1 ${
+                ordenarMenorPreco ? 'text-white' : 'text-gray-700'
+              }`}
+            >
+              Menor R$
+            </Text>
+          </TouchableOpacity>
+        </View>
+
         <ScrollView horizontal showsHorizontalScrollIndicator={false}>
           {CATEGORIAS.map((cat) => {
             const ativo = categoriaAtiva === cat;
@@ -80,7 +145,7 @@ export default function CatalogoAlunoScreen() {
               <TouchableOpacity
                 key={cat}
                 onPress={() => setCategoriaAtiva(cat)}
-                className={`mr-2.5 px-4 py-2 rounded-full border ${
+                className={`mr-2 px-4 py-1.5 rounded-full border ${
                   ativo
                     ? 'bg-brand border-brand'
                     : 'bg-gray-50 border-gray-200'
@@ -104,21 +169,26 @@ export default function CatalogoAlunoScreen() {
         keyExtractor={(item: any, index) => String(item?.id ?? index)}
         contentContainerStyle={{ padding: 16, paddingBottom: 32 }}
         refreshing={isRefetching}
-        onRefresh={refetch}
+        onRefresh={() => {
+          refetch();
+        }}
         ListEmptyComponent={
           <View className="bg-white rounded-2xl p-8 items-center border border-gray-100 mt-4">
             <Text className="text-gray-800 font-poppins-bold text-base">
               Nenhum curso encontrado
             </Text>
             <Text className="text-gray-500 font-poppins text-xs mt-1 text-center">
-              Não há cursos ativos nesta categoria no momento.
+              Tente outro termo de pesquisa ou mude a categoria selecionada.
             </Text>
           </View>
         }
         renderItem={({ item }: { item: any }) => {
           const precoOriginal = Number(item.preco ?? 0);
           const precoPromo = item.precoPromocional ?? item.novoValor;
-          const temPromocao = precoPromo !== undefined && precoPromo !== null && Number(precoPromo) < precoOriginal;
+          const temPromocao =
+            precoPromo !== undefined &&
+            precoPromo !== null &&
+            Number(precoPromo) < precoOriginal;
 
           return (
             <TouchableOpacity
